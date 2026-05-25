@@ -128,20 +128,16 @@ The AI translates these to GitNexus MCP tool calls automatically.
 
 ### Claude Code skills (optional)
 
-Install GitNexus skill files to teach Claude Code how to use the tools effectively:
+GitNexus ships skill files that teach Claude Code how to use the tools more effectively (exploring, impact analysis, debugging, refactoring). To install them in your project:
 
 ```bash
-# From your Magento project root
-bash /path/to/mage-os-gitnexus/scripts/install-skills.sh
+# Requires gitnexus installed locally
+gitnexus analyze --skills
 ```
 
-This copies skill files to `.claude/skills/gitnexus/` with guides for:
-- **Exploring** — architecture, execution flows, "how does X work?"
-- **Impact analysis** — blast radius, "what breaks if I change X?"
-- **Debugging** — trace bugs, "why is X failing?"
-- **Refactoring** — rename, extract, split with call graph awareness
-- **CLI** — index management, status, wiki generation
-- **Guide** — tools reference, resources, schema
+This generates `.claude/skills/gitnexus/` with the latest skill files from the GitNexus project. Skills evolve with each GitNexus release — always fetch fresh rather than copying static files.
+
+Without skills, the MCP tools still work — Claude Code discovers them via the MCP protocol. Skills just provide richer prompting guidance.
 
 ### CLI queries
 
