@@ -11,6 +11,16 @@ Pre-built [GitNexus](https://github.com/abhigyanpatwari/GitNexus) knowledge grap
 
 ## Quick start
 
+### Option 1: Docker (recommended)
+
+Build the image locally:
+
+```bash
+git clone https://github.com/ProxiBlue/mage-os-gitnexus.git
+cd mage-os-gitnexus
+docker build -t mage-os-gitnexus:2.3.0 .
+```
+
 Add to your `.mcp.json` (Claude Code, Cursor, or any MCP client):
 
 ```json
@@ -18,13 +28,38 @@ Add to your `.mcp.json` (Claude Code, Cursor, or any MCP client):
   "mcpServers": {
     "gitnexus-mageos": {
       "command": "docker",
-      "args": ["run", "--rm", "-i", "proxiblue/mage-os-gitnexus:2.3.0", "gitnexus", "mcp"]
+      "args": ["run", "--rm", "-i", "mage-os-gitnexus:2.3.0", "gitnexus", "mcp"]
     }
   }
 }
 ```
 
-Docker pulls the image once (~150MB compressed), then queries are instant.
+### Option 2: Download index directly
+
+If you already have gitnexus installed and just want the pre-built database:
+
+```bash
+# Download the index (121MB compressed, 754MB extracted)
+curl -fSL https://github.com/ProxiBlue/mage-os-gitnexus/releases/download/v2.3.0/gitnexus-index.tar.gz -o gitnexus-index.tar.gz
+
+# Extract into your project's .gitnexus directory
+mkdir -p .gitnexus
+tar xzf gitnexus-index.tar.gz -C .gitnexus/
+
+# Copy meta.json (grab from this repo or the release)
+curl -fSL https://raw.githubusercontent.com/ProxiBlue/mage-os-gitnexus/main/index/meta.json -o .gitnexus/meta.json
+
+# Register the index with gitnexus
+gitnexus index .
+```
+
+Then query immediately:
+
+```bash
+gitnexus context Product
+gitnexus impact ProductRepository --direction upstream
+gitnexus query "checkout payment"
+```
 
 ## What you can do
 
@@ -60,70 +95,12 @@ See callers, callees, and execution flows for any symbol.
 
 ## Building the index yourself
 
-If you want to rebuild (e.g., for a different Mage-OS version or with custom modules):
+If you want to rebuild for a different Mage-OS version or with custom modules, see `scripts/build-index.sh`.
 
-```bash
-# In your Mage-OS project directory
-NODE_OPTIONS='--max-old-space-size=16384' gitnexus analyze --force
-
-# Copy the index
-cp .gitnexus/lbug /path/to/mage-os-gitnexus/index/
-cp .gitnexus/meta.json /path/to/mage-os-gitnexus/index/
-
-# Build and push
-docker build -t proxiblue/mage-os-gitnexus:X.Y.Z .
-docker push proxiblue/mage-os-gitnexus:X.Y.Z
-```
-
-### Prerequisites for building
-
-GitNexus requires patches for large PHP vendor trees. See:
+GitNexus currently requires patches for large PHP vendor trees:
 - [PR #1800](https://github.com/abhigyanpatwari/GitNexus/pull/1800) — OOM in deferred-calls
 - [PR #1801](https://github.com/abhigyanpatwari/GitNexus/pull/1801) — phtml scope extraction
 - [PR #1808](https://github.com/abhigyanpatwari/GitNexus/pull/1808) — OOM in namespace-siblings
-
-Use the `.gitnexusignore` from this repo to scope the indexing correctly.
-
-### .gitnexusignore
-
-The index was built with this `.gitnexusignore` to include only Mage-OS core + Hyvä and exclude noise:
-
-```
-!vendor/
-!vendor/mage-os/
-!vendor/hyva-themes/
-vendor/*
-!vendor/mage-os/
-!vendor/hyva-themes/
-
-vendor/mage-os/language-*
-vendor/mage-os/sample-data-media
-vendor/mage-os/composer*
-vendor/mage-os/inventory-composer-installer
-vendor/mage-os/magento-allure-phpunit
-vendor/mage-os/magento-coding-standard
-vendor/mage-os/magento-composer-installer
-vendor/mage-os/magento2-functional-testing-framework
-vendor/mage-os/php-compatibility-fork
-vendor/mage-os/zend-*
-vendor/mage-os/magento-zf-db
-
-dev/
-setup/
-var/
-phpserver/
-**/Test/
-**/Tests/
-**/*-sample-data/
-```
-
-## Enhancing with Magento XML edges
-
-For additional dependency edges (plugins, preferences, block→template, observers, REST endpoints), use [gitnexus-magento](https://github.com/ProxiBlue/gitnexus-magento):
-
-```bash
-node /path/to/gitnexus-magento/dist/cli.js augment /path/to/project
-```
 
 ## License
 
