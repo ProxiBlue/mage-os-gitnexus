@@ -190,14 +190,13 @@ if [ -d "$MOUNTS_DIR" ]; then
   done
 fi
 
-# Build the cross-link bridge db for the group. For our PHP/Magento setup this
-# mostly extracts HTTP routes (webapi.xml) — the included shared-library call
-# resolution we'd want isn't implemented in gitnexus's group sync. Still cheap
-# enough to run at startup; set GROUP_SYNC=0 to skip.
-if [ "$MEMBER_COUNT" -gt 1 ] && [ "${GROUP_SYNC:-1}" = "1" ]; then
-  echo "[mage-os-gitnexus] Running group sync (cross-link bridge)..."
-  gitnexus group sync "$GROUP_NAME" --skip-embeddings --allow-stale 2>&1 | tail -10 || true
-fi
+# Note: `gitnexus group sync` is NOT run at startup. It builds a contract
+# bridge db that mostly bridges HTTP routes — for our PHP monolith use case
+# it doesn't help with shared-library call resolution (see README's "What
+# groups give you" section), and it adds 30-60s of startup latency on the
+# three combined indexes. If you want it, attach with:
+#
+#   docker exec -it <container> gitnexus group sync mageos-project --skip-embeddings --allow-stale
 
 if [ "$HAS_MOUNTS" = true ]; then
   echo ""

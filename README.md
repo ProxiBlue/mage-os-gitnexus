@@ -25,7 +25,7 @@ See [Available versions](#available-versions) for stats per release.
 
 The three indexes are registered together as a [GitNexus group](https://github.com/abhigyanpatwari/GitNexus) named `mageos-project`. This is **not** the same thing as merging them into one graph. To avoid surprises:
 
-**What works** — federated search across all three indexes via MCP. Set `repo` to `@mageos-project` in any gitnexus MCP tool (`query`, `context`, `find_symbol`, `impact`, …) and results are merged from mageos, hyva, and deps with reciprocal-rank-fusion ranking. The container also runs `gitnexus group sync` at startup to extract HTTP-route contracts (e.g. Magento `webapi.xml` routes ↔ frontend `fetch()` calls) into a bridge database used by cross-impact queries.
+**What works** — federated search across all three indexes via MCP. Set `repo` to `@mageos-project` in any gitnexus MCP tool (`query`, `context`, `find_symbol`, `impact`, …) and results are merged from mageos, hyva, and deps with reciprocal-rank-fusion ranking.
 
 **What does NOT work** — direct PHP class/method call edges across index boundaries. When `vendor/mage-os/.../SomeController.php` calls `Symfony\Console\Application::run()`:
 
@@ -39,7 +39,7 @@ The three indexes are registered together as a [GitNexus group](https://github.c
 
 - Query each index by name explicitly (`repo: mageos` then `repo: deps`) and reconcile in your head
 - Build a combined index locally (`TARGET=all` rebuild), then bypass the split-distribution flow with a single `gitnexus index` registration over the combined output. Costs ~13h rebuild, no crash isolation, ~800MB single archive — but full cross-call resolution. Not currently shipped as a default release; see [Building indexes for your version](#building-indexes-for-your-version) and adapt the `.gitnexusignore` to whitelist all three vendor trees in one pass.
-- Disable the startup sync if you don't need HTTP-route bridging — set `-e GROUP_SYNC=0` on the container.
+- Run `gitnexus group sync` manually if HTTP-route bridging would help your queries (e.g. you want webapi route ↔ frontend `fetch()` linking). It's not run at container startup because it adds 30-60s of latency for a feature that's a no-op outside HTTP boundaries. Attach to the container with `docker exec -it <container> gitnexus group sync mageos-project --skip-embeddings --allow-stale`.
 
 ## Quick start
 
