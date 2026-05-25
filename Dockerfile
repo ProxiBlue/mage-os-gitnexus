@@ -1,11 +1,10 @@
 FROM node:22-slim
 
-# GitNexus version — use ARG so it can be overridden at build time:
+# GitNexus version — override at build time:
 #   docker build --build-arg GITNEXUS_VERSION=1.6.6-rc.55 .
 ARG GITNEXUS_VERSION=1.6.6-rc.55
 
-# Install gitnexus globally (--ignore-scripts to avoid onnxruntime GPU download)
-# tree-sitter-kotlin needs node-gyp compile (no prebuilds for current ABI)
+# Install gitnexus + build tools for tree-sitter native bindings
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ca-certificates git build-essential python3 \
  && npm install -g --ignore-scripts gitnexus@${GITNEXUS_VERSION} \
@@ -13,29 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && cd /usr/local/lib/node_modules/gitnexus/node_modules/tree-sitter-kotlin \
  && npx --yes node-gyp rebuild 2>/dev/null || true \
  && cd /usr/local/lib/node_modules/gitnexus/node_modules/tree-sitter \
- && npx --yes node-gyp rebuild 2>/dev/null || true
-
-# Patches disabled — testing if RC includes upstream fixes
-# Re-enable if needed by uncommenting the relevant blocks.
-#
-# phtml scope extraction (PR #1801):
-# RUN sed -i 's/if (scopeDrafts.length === 0 && matchCount === 0) {/{/' \
-#     /usr/local/lib/node_modules/gitnexus/dist/core/ingestion/scope-extractor.js \
-#  && sed -i '/throw new Error.*ScopeExtractor: no Module scope found/d' \
-#     /usr/local/lib/node_modules/gitnexus/dist/core/ingestion/scope-extractor.js \
-#  && sed -i '/Provider must emit at least one @scope.module capture per file/d' \
-#     /usr/local/lib/node_modules/gitnexus/dist/core/ingestion/scope-extractor.js
-#
-# OOM fixes (PRs #1800, #1808):
-# COPY patches/fix-oom.js /tmp/fix-oom.js
-# RUN node /tmp/fix-oom.js && rm /tmp/fix-oom.js
-#
-# Scope-tree re-parent + containment skip (PR #1801):
-# COPY patches/fix-scope-tree.js /tmp/fix-scope-tree.js
-# RUN node /tmp/fix-scope-tree.js && rm /tmp/fix-scope-tree.js
-
-# Clean up build tools
-RUN apt-get purge -y build-essential python3 && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+ && npx --yes node-gyp rebuild 2>/dev/null || true \
+ && apt-get purge -y build-essential python3 && apt-get autoremove -y \
+ && rm -rf /var/lib/apt/lists/*
 
 # Create directories
 RUN mkdir -p /workspace/.gitnexus /root/.gitnexus /root/.gitnexus/groups/mageos-project /mounts
@@ -66,7 +45,6 @@ RUN node -e " \
   fs.writeFileSync('/root/.gitnexus/registry.json', JSON.stringify(registry)); \
 "
 
-# Entrypoint script handles serve / rebuild / custom mounts
 COPY scripts/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
