@@ -12,11 +12,14 @@ RUN sed -i 's/if (scopeDrafts.length === 0 && matchCount === 0) {/{/' \
  && sed -i '/Provider must emit at least one @scope.module capture per file/d' \
     /usr/local/lib/node_modules/gitnexus/dist/core/ingestion/scope-extractor.js
 
-# Create workspace
-RUN mkdir -p /workspace/.gitnexus /root/.gitnexus
+# Apply OOM fixes for large PHP vendor trees (upstream #1741, PR #1800)
+COPY patches/fix-oom.js /tmp/fix-oom.js
+RUN node /tmp/fix-oom.js && rm /tmp/fix-oom.js
 
-# Download pre-built index
-# ARG allows overriding at build time: docker build --build-arg VERSION=2.3.0
+# Create directories
+RUN mkdir -p /workspace/.gitnexus /client /root/.gitnexus /root/.gitnexus/groups/mageos-project
+
+# Download pre-built Mage-OS index
 ARG VERSION=2.3.0
 ARG INDEX_URL=https://github.com/ProxiBlue/mage-os-gitnexus/releases/download/v${VERSION}/gitnexus-index.tar.gz
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
@@ -25,7 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
  && rm /tmp/index.tar.gz \
  && apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
-# Register the index in gitnexus registry
+# Register the pre-built index
 COPY index/meta.json /workspace/.gitnexus/meta.json
 RUN node -e " \
   const fs = require('fs'); \
@@ -38,11 +41,14 @@ RUN node -e " \
     lastCommit: meta.lastCommit, \
     stats: meta.stats \
   }]; \
-  fs.mkdirSync('/root/.gitnexus', {recursive: true}); \
   fs.writeFileSync('/root/.gitnexus/registry.json', JSON.stringify(registry)); \
 "
 
+# Entrypoint script handles optional client code mounting + indexing
+COPY scripts/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 WORKDIR /workspace
 
-ENTRYPOINT ["gitnexus"]
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["mcp"]
