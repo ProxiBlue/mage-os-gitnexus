@@ -126,6 +126,23 @@ Ask your AI assistant natural language questions:
 
 The AI translates these to GitNexus MCP tool calls automatically.
 
+### Claude Code skills (optional)
+
+Install GitNexus skill files to teach Claude Code how to use the tools effectively:
+
+```bash
+# From your Magento project root
+bash /path/to/mage-os-gitnexus/scripts/install-skills.sh
+```
+
+This copies skill files to `.claude/skills/gitnexus/` with guides for:
+- **Exploring** — architecture, execution flows, "how does X work?"
+- **Impact analysis** — blast radius, "what breaks if I change X?"
+- **Debugging** — trace bugs, "why is X failing?"
+- **Refactoring** — rename, extract, split with call graph awareness
+- **CLI** — index management, status, wiki generation
+- **Guide** — tools reference, resources, schema
+
 ### CLI queries
 
 ```bash
