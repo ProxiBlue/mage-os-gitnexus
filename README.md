@@ -104,6 +104,40 @@ Common paths:
 
 If you don't mount source code, graph queries still work — only file-content tools fail.
 
+## Web UI
+
+GitNexus has a web UI hosted at [gitnexus.vercel.app](https://gitnexus.vercel.app) that connects to a local HTTP backend over CORS. The frontend is the upstream's hosted page; your code and graph stay on your machine — only the JavaScript runs in your browser.
+
+Start the backend with the bundled `docker-compose.yml`:
+
+```bash
+cd ~/workspace/proxiblue/mage-os-gitnexus
+
+# Point at your Mage-OS project (in your shell or in a .env file next to docker-compose.yml)
+export MAGEOS_PROJECT_PATH=/home/you/workspace/your-mageos-project
+
+docker compose up gitnexus-ui
+```
+
+Then open **https://gitnexus.vercel.app** in your browser. The page auto-detects `localhost:4747` and connects.
+
+Or as a one-off `docker run`:
+
+```bash
+docker run --rm -p 4747:4747 \
+  -e PROJECT_ROOT=/var/www/html \
+  -v ~/workspace/your-mageos-project:/var/www/html:ro \
+  mage-os-gitnexus:latest \
+  serve --host 0.0.0.0
+```
+
+Key flags:
+- **`-p 4747:4747`** — exposes the API port. The hosted UI can't reach it otherwise.
+- **`--host 0.0.0.0`** — required inside Docker; the default `localhost` only binds the container's loopback.
+- **`:ro`** — read-only mount is fine; the server only needs to read files for the `read_file`-style tools.
+
+**Privacy / compliance**: the UI page (HTML + JS) is loaded from `gitnexus.vercel.app`, so the page's JavaScript can in principle log usage. The *server* in the container makes no outbound calls during normal operation (audited — only `gitnexus publish` ever talks to GitHub, and only when explicitly invoked). If the hosted UI is a concern for client-confidential work, stick to the [MCP integration](#adding-your-own-code) — graph queries through Claude Code never touch a hosted page.
+
 ## Adding your own code
 
 Mount any number of code folders at `/mounts/<name>`. Each becomes a separate index, automatically linked with the Mage-OS graph for cross-index queries. **No gitnexus needed on your host** — the container handles all indexing.

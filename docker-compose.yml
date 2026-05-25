@@ -1,0 +1,32 @@
+# Convenience compose file for serving the GitNexus web UI from this repo.
+#
+# Usage:
+#   1. Point MAGEOS_PROJECT_PATH at your Mage-OS install (the dir containing
+#      composer.json + vendor/). Set it in .env, your shell, or override here.
+#   2. Bring the service up:
+#        docker compose up gitnexus-ui
+#   3. Open https://gitnexus.vercel.app in your browser — the hosted frontend
+#      will connect to your local server on port 4747 via CORS.
+#
+# Stop with Ctrl+C or `docker compose down`.
+#
+# Privacy note: the UI page itself is loaded from gitnexus.vercel.app. Your
+# code and graph stay local (queries flow browser → localhost:4747), but the
+# page's JavaScript runs in your browser and could log usage. If you need a
+# fully local UI, use the MCP entrypoint instead (see README).
+
+services:
+  gitnexus-ui:
+    image: mage-os-gitnexus:latest
+    command: serve --host 0.0.0.0
+    environment:
+      # In-container path the registry will resolve files against. Must match
+      # the in-container mount point below. /var/www/html matches DDEV layout.
+      PROJECT_ROOT: /var/www/html
+    ports:
+      - "4747:4747"
+    volumes:
+      # Host path to your Mage-OS project. Override via env var or .env file:
+      #   MAGEOS_PROJECT_PATH=/path/to/mageos docker compose up
+      - ${MAGEOS_PROJECT_PATH:-./missing-mageos-project-path}:/var/www/html:ro
+    restart: unless-stopped
