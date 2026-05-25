@@ -22,7 +22,7 @@ RUN mkdir -p /workspace/.gitnexus /client /root/.gitnexus /root/.gitnexus/groups
 # Download pre-built Mage-OS index
 ARG VERSION=2.3.0
 ARG INDEX_URL=https://github.com/ProxiBlue/mage-os-gitnexus/releases/download/v${VERSION}/gitnexus-index.tar.gz
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates git \
  && curl -fSL "${INDEX_URL}" -o /tmp/index.tar.gz \
  && tar xzf /tmp/index.tar.gz -C /workspace/.gitnexus/ \
  && rm /tmp/index.tar.gz \
