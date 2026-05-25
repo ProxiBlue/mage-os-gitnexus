@@ -138,6 +138,26 @@ Key flags:
 
 **Privacy / compliance**: the UI page (HTML + JS) is loaded from `gitnexus.vercel.app`, so the page's JavaScript can in principle log usage. The *server* in the container makes no outbound calls during normal operation (audited — only `gitnexus publish` ever talks to GitHub, and only when explicitly invoked). If the hosted UI is a concern for client-confidential work, stick to the [MCP integration](#adding-your-own-code) — graph queries through Claude Code never touch a hosted page.
 
+### Bonus: piggyback MCP on the same container
+
+If you're already running the UI as a service, you can wire your MCP client to `docker exec` into the same container instead of spawning a fresh `docker run` per IDE session. The container stays warm, the lbug files stay in the OS page cache, and you don't pay container-startup cost on every MCP connection.
+
+`.mcp.json`:
+```json
+{
+  "mcpServers": {
+    "gitnexus-mageos": {
+      "command": "docker",
+      "args": ["exec", "-i", "mage-os-gitnexus-gitnexus-ui-1", "gitnexus", "mcp"]
+    }
+  }
+}
+```
+
+The container name follows compose's `<project>-<service>-<replica>` convention; verify yours with `docker ps --format '{{.Names}}'`. If you renamed the project directory, the name changes — pin it explicitly with `container_name: mageos-gitnexus` in `docker-compose.yml` if you want stability.
+
+**Worth it?** Honest answer: small win. MCP clients only spawn the server once per IDE session (not per query), so the saving is ~1-2s when you start Claude Code — about 10-20s a day total. It's a free upgrade *if you're already running the UI* (same container does both jobs); not worth running a service just for this otherwise.
+
 ## Adding your own code
 
 Mount any number of code folders at `/mounts/<name>`. Each becomes a separate index, automatically linked with the Mage-OS graph for cross-index queries. **No gitnexus needed on your host** — the container handles all indexing.
