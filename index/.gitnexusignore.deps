@@ -1,0 +1,95 @@
+# Only Magento's runtime PHP dependencies — for TARGET=deps rebuilds.
+# These travel with every Mage-OS install (pulled in by mage-os/product-community-edition
+# composer requirements). Indexing them closes the blind spot where Magento code
+# calls into laminas, symfony, monolog, etc.
+
+# Override hardcoded vendor ignore — must negate parent first for children to work
+!vendor/
+!vendor/laminas/
+!vendor/symfony/
+!vendor/monolog/
+!vendor/psr/
+!vendor/guzzlehttp/
+!vendor/league/
+!vendor/colinmollenhour/
+!vendor/ramsey/
+!vendor/pelago/
+!vendor/ezyang/
+!vendor/elasticsearch/
+!vendor/opensearch-project/
+!vendor/duosecurity/
+!vendor/creatuity/
+!vendor/aligent/
+!vendor/composer/semver/
+!vendor/composer/ca-bundle/
+
+# Re-ignore everything else in vendor
+vendor/*
+!vendor/laminas/
+!vendor/symfony/
+!vendor/monolog/
+!vendor/psr/
+!vendor/guzzlehttp/
+!vendor/league/
+!vendor/colinmollenhour/
+!vendor/ramsey/
+!vendor/pelago/
+!vendor/ezyang/
+!vendor/elasticsearch/
+!vendor/opensearch-project/
+!vendor/duosecurity/
+!vendor/creatuity/
+!vendor/aligent/
+!vendor/composer/
+
+# Inside composer/ keep only semver + ca-bundle (small, called by Magento).
+# Block the composer-tool internals.
+vendor/composer/*
+!vendor/composer/semver/
+!vendor/composer/ca-bundle/
+
+# Standard excludes
+gitnexus-magento/
+.claude/
+patches/
+LokiCheckout*
+*.md
+.env*
+
+**/Test/
+**/Tests/
+**/test/
+**/tests/
+
+**/*-sample-data/
+**/module-*-sample-data
+
+# Module boilerplate — adds noise, no graph value
+vendor/**/registration.php
+vendor/**/composer.json
+vendor/**/LICENSE*
+vendor/**/license*
+vendor/**/COPYING*
+vendor/**/CHANGELOG*
+
+# Minified JS — known tree-sitter Napi crash risk
+**/*.min.js
+**/*-min.js
+**/*.bundle.js
+
+# Pure data files inside vendor packages — `return [...]` arrays, no logic, no graph value.
+# Symfony Intl ships thousands of ICU locale/region/timezone/emoji tables this way;
+# parsing them all takes 10+ minutes for zero graph utility.
+vendor/symfony/intl/Resources/data/
+vendor/symfony/polyfill-*/Resources/
+vendor/laminas/laminas-i18n/resources/
+vendor/laminas/laminas-validator/src/I18n/
+
+# Documentation directories inside vendor — markdown/rst/html, not PHP
+vendor/**/docs/
+vendor/**/doc/
+vendor/**/examples/
+
+# IDE / PHPStan stub files — empty signatures, no real implementation
+vendor/**/stubs/
+vendor/**/Stubs/

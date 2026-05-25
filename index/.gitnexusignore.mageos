@@ -1,12 +1,12 @@
+# Only vendor/mage-os/ — for TARGET=mageos rebuilds
+
 # Override hardcoded vendor ignore — must negate parent first for children to work
 !vendor/
 !vendor/mage-os/
-!vendor/hyva-themes/
 
 # Re-ignore everything else inside vendor
 vendor/*
 !vendor/mage-os/
-!vendor/hyva-themes/
 
 # Exclude non-essential mage-os packages
 vendor/mage-os/language-*
@@ -65,7 +65,3 @@ vendor/mage-os/magento2-base/lib/web/less/
 vendor/mage-os/magento2-base/lib/web/hugerte/
 vendor/mage-os/magento2-base/lib/web/moment*.js
 vendor/mage-os/module-swagger/view/frontend/web/swagger-ui/
-
-# Hyva tailwind output
-**/tailwind-output.css
-**/tailwind/dist/

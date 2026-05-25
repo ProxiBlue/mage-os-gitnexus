@@ -1,0 +1,46 @@
+# Only vendor/hyva-themes/ — for TARGET=hyva rebuilds
+
+# Override hardcoded vendor ignore — must negate parent first for children to work
+!vendor/
+!vendor/hyva-themes/
+
+# Re-ignore everything else inside vendor
+vendor/*
+!vendor/hyva-themes/
+
+# Exclude directories
+gitnexus-magento/
+.claude/
+patches/
+LokiCheckout*
+
+# Exclude files
+*.md
+.env*
+
+# Exclude tests everywhere
+**/Test/
+**/Tests/
+**/test/
+**/tests/
+
+# Exclude sample data modules
+**/*-sample-data/
+**/module-*-sample-data
+
+# Module boilerplate — adds noise, no graph value
+vendor/**/registration.php
+vendor/**/composer.json
+vendor/**/LICENSE*
+vendor/**/license*
+vendor/**/COPYING*
+vendor/**/CHANGELOG*
+
+# Minified JS — known tree-sitter Napi crash risk
+**/*.min.js
+**/*-min.js
+**/*.bundle.js
+
+# Hyva ships tailwind output (huge, generated)
+**/tailwind-output.css
+**/tailwind/dist/

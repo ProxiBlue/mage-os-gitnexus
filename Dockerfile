@@ -16,33 +16,92 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && apt-get purge -y build-essential python3 && apt-get autoremove -y \
  && rm -rf /var/lib/apt/lists/*
 
-# Create directories
-RUN mkdir -p /workspace/.gitnexus /root/.gitnexus /root/.gitnexus/groups/mageos-project /mounts
+# Layout:
+#   /workspace/                       — user code mount (default; override with PROJECT_ROOT)
+#   /indexes/mageos/.gitnexus/lbug   — pre-built Mage-OS index
+#   /indexes/hyva/.gitnexus/lbug     — pre-built Hyvä index (optional)
+#   /mounts/                          — per-folder custom code indexes (serve mode)
+RUN mkdir -p /workspace \
+             /indexes/mageos/.gitnexus \
+             /indexes/hyva/.gitnexus \
+             /indexes/deps/.gitnexus \
+             /root/.gitnexus /root/.gitnexus/groups/mageos-project \
+             /mounts
 
-# Default .gitnexusignore for rebuild mode
+# .gitnexusignore variants for rebuild mode (TARGET=mageos|hyva|deps|all)
 COPY index/.gitnexusignore /workspace/.gitnexusignore
+COPY index/.gitnexusignore.mageos /workspace/.gitnexusignore.mageos
+COPY index/.gitnexusignore.hyva /workspace/.gitnexusignore.hyva
+COPY index/.gitnexusignore.deps /workspace/.gitnexusignore.deps
 
-# Download pre-built Mage-OS index
-ARG VERSION=2.3.0
-ARG INDEX_URL=https://github.com/ProxiBlue/mage-os-gitnexus/releases/download/v${VERSION}/gitnexus-index.tar.gz
-RUN curl -fSL "${INDEX_URL}" -o /tmp/index.tar.gz \
- && tar xzf /tmp/index.tar.gz -C /workspace/.gitnexus/ \
- && rm /tmp/index.tar.gz
+# ── Index versions ────────────────────────────────────────────────────────
+# Image is decoupled from content. Pick which Mage-OS, Hyvä, and Magento
+# runtime-deps indexes to bundle:
+#   docker build \
+#     --build-arg MAGEOS_VERSION=2.3.0 \
+#     --build-arg HYVA_VERSION=1.4.6 \
+#     --build-arg INCLUDE_DEPS=1 \
+#     -t mage-os-gitnexus:my-tag .
+#
+# Set HYVA_VERSION=none to skip the Hyvä index.
+# Set INCLUDE_DEPS=0 to skip the Magento runtime-deps index.
+#
+# Runtime-deps versions are pinned to the Mage-OS version they were built
+# against (since composer.lock pins different laminas/symfony/etc per Mage-OS
+# release). We always pair deps-${MAGEOS_VERSION} — no separate version arg.
+#
+# Each archive is published under a GitHub release tagged `<target>-<version>`
+# (e.g. `mageos-2.3.0`, `hyva-1.4.6`, `deps-2.3.0`) and contains lbug + meta.json
+# at the root.
+ARG MAGEOS_VERSION=2.3.0
+ARG HYVA_VERSION=1.4.6
+ARG INCLUDE_DEPS=1
+ARG INDEX_URL_MAGEOS=https://github.com/ProxiBlue/mage-os-gitnexus/releases/download/mageos-${MAGEOS_VERSION}/gitnexus-index.tar.gz
+ARG INDEX_URL_HYVA=https://github.com/ProxiBlue/mage-os-gitnexus/releases/download/hyva-${HYVA_VERSION}/gitnexus-index.tar.gz
+ARG INDEX_URL_DEPS=https://github.com/ProxiBlue/mage-os-gitnexus/releases/download/deps-${MAGEOS_VERSION}/gitnexus-index.tar.gz
 
-# Register the pre-built index
-COPY index/meta.json /workspace/.gitnexus/meta.json
+RUN curl -fSL "${INDEX_URL_MAGEOS}" -o /tmp/mageos.tar.gz \
+ && tar xzf /tmp/mageos.tar.gz -C /indexes/mageos/.gitnexus/ \
+ && rm /tmp/mageos.tar.gz
+
+RUN if [ "${HYVA_VERSION}" = "none" ]; then \
+      echo "[mage-os-gitnexus] HYVA_VERSION=none — skipping Hyvä index"; \
+      rm -rf /indexes/hyva; \
+    else \
+      curl -fSL "${INDEX_URL_HYVA}" -o /tmp/hyva.tar.gz \
+      && tar xzf /tmp/hyva.tar.gz -C /indexes/hyva/.gitnexus/ \
+      && rm /tmp/hyva.tar.gz; \
+    fi
+
+RUN if [ "${INCLUDE_DEPS}" != "1" ]; then \
+      echo "[mage-os-gitnexus] INCLUDE_DEPS=${INCLUDE_DEPS} — skipping runtime-deps index"; \
+      rm -rf /indexes/deps; \
+    else \
+      curl -fSL "${INDEX_URL_DEPS}" -o /tmp/deps.tar.gz \
+      && tar xzf /tmp/deps.tar.gz -C /indexes/deps/.gitnexus/ \
+      && rm /tmp/deps.tar.gz; \
+    fi
+
+# Register present indexes. All point at the same repo root (PROJECT_ROOT,
+# overridable at runtime). Paths in each graph are stored relative.
 RUN node -e " \
   const fs = require('fs'); \
-  const meta = JSON.parse(fs.readFileSync('/workspace/.gitnexus/meta.json', 'utf-8')); \
-  const registry = [{ \
-    name: 'mageos', \
-    path: '/workspace', \
-    storagePath: '/workspace/.gitnexus', \
-    indexedAt: meta.indexedAt, \
-    lastCommit: meta.lastCommit, \
-    stats: meta.stats \
-  }]; \
-  fs.writeFileSync('/root/.gitnexus/registry.json', JSON.stringify(registry)); \
+  const entry = name => { \
+    const meta = JSON.parse(fs.readFileSync('/indexes/' + name + '/.gitnexus/meta.json', 'utf-8')); \
+    return { \
+      name, \
+      path: '/workspace', \
+      storagePath: '/indexes/' + name + '/.gitnexus', \
+      indexedAt: meta.indexedAt, \
+      lastCommit: meta.lastCommit, \
+      stats: meta.stats \
+    }; \
+  }; \
+  const reg = []; \
+  for (const name of ['mageos', 'hyva', 'deps']) { \
+    if (fs.existsSync('/indexes/' + name + '/.gitnexus/meta.json')) reg.push(entry(name)); \
+  } \
+  fs.writeFileSync('/root/.gitnexus/registry.json', JSON.stringify(reg)); \
 "
 
 COPY scripts/entrypoint.sh /entrypoint.sh
