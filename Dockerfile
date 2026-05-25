@@ -18,7 +18,7 @@ RUN mkdir -p /workspace/.gitnexus /root/.gitnexus
 # Download pre-built index
 # ARG allows overriding at build time: docker build --build-arg VERSION=2.3.0
 ARG VERSION=2.3.0
-ARG INDEX_URL=https://www.proxiblue.com.au/gitnexus/mage-os/${VERSION}/gitnexus-index.tar.gz
+ARG INDEX_URL=https://github.com/ProxiBlue/mage-os-gitnexus/releases/download/v${VERSION}/gitnexus-index.tar.gz
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
  && curl -fSL "${INDEX_URL}" -o /tmp/index.tar.gz \
  && tar xzf /tmp/index.tar.gz -C /workspace/.gitnexus/ \
