@@ -18,6 +18,11 @@
 services:
   gitnexus-ui:
     image: mage-os-gitnexus:latest
+    # Build locally if the :latest tag doesn't exist yet — avoids
+    # "pull access denied" errors since this image isn't on Docker Hub.
+    build:
+      context: .
+      dockerfile: Dockerfile
     command: serve --host 0.0.0.0
     environment:
       # In-container path the registry will resolve files against. Must match
