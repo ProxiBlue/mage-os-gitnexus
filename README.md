@@ -132,9 +132,36 @@ docker run --rm -p 4747:4747 \
 ```
 
 Key flags:
-- **`-p 4747:4747`** — exposes the API port. The hosted UI can't reach it otherwise.
-- **`--host 0.0.0.0`** — required inside Docker; the default `localhost` only binds the container's loopback.
+- **`-p 4747:4747`** — host-side port mapping. The hosted UI probes `localhost:4747` by default.
+- **`--host 0.0.0.0`** — passed *to gitnexus*, not Docker. It tells the server to listen on all container interfaces; the default `localhost` only binds the container's loopback, which Docker port-forwarding can't reach.
 - **`:ro`** — read-only mount is fine; the server only needs to read files for the `read_file`-style tools.
+
+### Troubleshooting
+
+**"Bind for 127.0.0.1:4747 failed: port is already allocated"** — something else on your host is using 4747. Diagnose with:
+
+```bash
+docker ps --filter publish=4747
+ss -ltnp '( sport = :4747 )'   # or: lsof -i :4747
+```
+
+Common culprits:
+- A previous `docker compose up gitnexus-ui` still running — `docker compose down`
+- A DDEV / Lando override that forwards 4747 to your dev container (look for `.ddev/docker-compose.gitnexus.yaml` or similar in your Mage-OS project)
+- A standalone `gitnexus serve` you started directly on the host
+
+Either free 4747 or run our container on a different host port:
+
+```bash
+GITNEXUS_UI_PORT=4748 MAGEOS_PROJECT_PATH=/path/to/mageos docker compose up gitnexus-ui
+```
+
+If you change the port, the hosted UI page at `gitnexus.vercel.app` won't auto-find it — use the page's connection URL field to point at `http://localhost:4748` explicitly.
+
+**"GUI says it can't connect / spinner forever"** — most likely:
+- Container failed to start (port conflict above) — check `docker compose ps`
+- The container is up but you're hitting `https://` instead of `http://localhost:4747` from the browser console (verify in DevTools Network tab)
+- A browser extension or VPN intercepting `localhost` — try a private window
 
 **Privacy / compliance**: the UI page (HTML + JS) is loaded from `gitnexus.vercel.app`, so the page's JavaScript can in principle log usage. The *server* in the container makes no outbound calls during normal operation (audited — only `gitnexus publish` ever talks to GitHub, and only when explicitly invoked). If the hosted UI is a concern for client-confidential work, stick to the [MCP integration](#adding-your-own-code) — graph queries through Claude Code never touch a hosted page.
 

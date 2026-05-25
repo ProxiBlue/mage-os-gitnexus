@@ -29,7 +29,11 @@ services:
       # the in-container mount point below. /var/www/html matches DDEV layout.
       PROJECT_ROOT: /var/www/html
     ports:
-      - "4747:4747"
+      # Override the host port if 4747 is taken (e.g. DDEV already forwards it):
+      #   GITNEXUS_UI_PORT=4748 docker compose up gitnexus-ui
+      # Inside the container the server always listens on 4747 (`--host 0.0.0.0`
+      # in the `command:` above), only the host-side port is configurable.
+      - "${GITNEXUS_UI_PORT:-4747}:4747"
     volumes:
       # Host path to your Mage-OS project. Override via env var or .env file:
       #   MAGEOS_PROJECT_PATH=/path/to/mageos docker compose up
