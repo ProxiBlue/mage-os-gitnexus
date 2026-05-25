@@ -193,6 +193,28 @@ This:
 
 The container includes all necessary patches for large PHP vendor trees. A default `.gitnexusignore` is applied if your project doesn't have one.
 
+### Tuning the rebuild
+
+Control resource usage via environment variables:
+
+```bash
+docker run --rm -it \
+  -e REBUILD=1 \
+  -e GITNEXUS_WORKERS=4 \
+  -e GITNEXUS_HEAP_SIZE=16384 \
+  -v /path/to/project:/project \
+  -v mageos-index:/output \
+  mage-os-gitnexus:2.3.0
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GITNEXUS_WORKERS` | auto (all cores) | Number of parser workers. Reduce to keep machine responsive |
+| `GITNEXUS_HEAP_SIZE` | `32768` | Node.js heap limit in MB |
+| `GITNEXUS_WORKER_TIMEOUT` | `60` | Worker idle timeout in seconds before retry |
+| `GITNEXUS_MAX_FILE_SIZE` | `512` | Skip files larger than this (KB) |
+| `GITNEXUS_SUB_BATCH_BYTES` | `16777216` | Worker sub-batch byte budget (16MB) |
+
 To use the rebuilt index, copy it back:
 
 ```bash

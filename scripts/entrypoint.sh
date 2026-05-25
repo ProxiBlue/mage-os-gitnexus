@@ -45,9 +45,29 @@ if [ "${REBUILD:-0}" = "1" ]; then
     echo "  Copied default .gitnexusignore"
   fi
 
+  # Tunable parameters via environment variables
+  HEAP_SIZE="${GITNEXUS_HEAP_SIZE:-32768}"
+  WORKERS="${GITNEXUS_WORKERS:-}"
+  WORKER_TIMEOUT="${GITNEXUS_WORKER_TIMEOUT:-60}"
+  MAX_FILE_SIZE="${GITNEXUS_MAX_FILE_SIZE:-512}"
+  SUB_BATCH_BYTES="${GITNEXUS_SUB_BATCH_BYTES:-16777216}"
+
+  # Build analyze command
+  ANALYZE_ARGS="--force --skip-agents-md --skip-skills --worker-timeout $WORKER_TIMEOUT --max-file-size $MAX_FILE_SIZE"
+  [ -n "$WORKERS" ] && ANALYZE_ARGS="$ANALYZE_ARGS --workers $WORKERS"
+
+  echo "  Config:"
+  echo "    Heap:            ${HEAP_SIZE}MB"
+  echo "    Workers:         ${WORKERS:-auto}"
+  echo "    Worker timeout:  ${WORKER_TIMEOUT}s"
+  echo "    Max file size:   ${MAX_FILE_SIZE}KB"
+  echo "    Sub-batch bytes: ${SUB_BATCH_BYTES}"
+  echo ""
   echo "  Starting gitnexus analyze (this may take 60-90+ minutes)..."
-  NODE_OPTIONS='--max-old-space-size=32768' gitnexus analyze --force \
-    --skip-agents-md --skip-skills 2>&1
+
+  NODE_OPTIONS="--max-old-space-size=${HEAP_SIZE}" \
+  GITNEXUS_WORKER_SUB_BATCH_MAX_BYTES="$SUB_BATCH_BYTES" \
+  gitnexus analyze $ANALYZE_ARGS 2>&1
 
   # Copy index to /output if mounted
   if [ -d "/output" ]; then
