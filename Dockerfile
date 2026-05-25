@@ -56,9 +56,9 @@ COPY index/.gitnexusignore.deps /workspace/.gitnexusignore.deps
 ARG MAGEOS_VERSION=2.3.0
 ARG HYVA_VERSION=1.4.6
 ARG INCLUDE_DEPS=1
-ARG INDEX_URL_MAGEOS=https://github.com/ProxiBlue/mage-os-gitnexus/releases/download/mageos-${MAGEOS_VERSION}/gitnexus-index.tar.gz
-ARG INDEX_URL_HYVA=https://github.com/ProxiBlue/mage-os-gitnexus/releases/download/hyva-${HYVA_VERSION}/gitnexus-index.tar.gz
-ARG INDEX_URL_DEPS=https://github.com/ProxiBlue/mage-os-gitnexus/releases/download/deps-${MAGEOS_VERSION}/gitnexus-index.tar.gz
+ARG INDEX_URL_MAGEOS=https://github.com/ProxiBlue/mage-os-gitnexus/releases/download/mageos-${MAGEOS_VERSION}/gitnexus-index-mageos-${MAGEOS_VERSION}.tar.gz
+ARG INDEX_URL_HYVA=https://github.com/ProxiBlue/mage-os-gitnexus/releases/download/hyva-${HYVA_VERSION}/gitnexus-index-hyva-${HYVA_VERSION}.tar.gz
+ARG INDEX_URL_DEPS=https://github.com/ProxiBlue/mage-os-gitnexus/releases/download/deps-${MAGEOS_VERSION}/gitnexus-index-deps-${MAGEOS_VERSION}.tar.gz
 
 RUN curl -fSL "${INDEX_URL_MAGEOS}" -o /tmp/mageos.tar.gz \
  && tar xzf /tmp/mageos.tar.gz -C /indexes/mageos/.gitnexus/ \

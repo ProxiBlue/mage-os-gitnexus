@@ -292,17 +292,17 @@ RELEASES=https://github.com/ProxiBlue/mage-os-gitnexus/releases/download
 
 # Mage-OS core
 mkdir -p indexes/mageos/.gitnexus
-curl -fSL $RELEASES/mageos-$MAGEOS/gitnexus-index.tar.gz | tar xz -C indexes/mageos/.gitnexus/
+curl -fSL $RELEASES/mageos-$MAGEOS/gitnexus-index-mageos-$MAGEOS.tar.gz | tar xz -C indexes/mageos/.gitnexus/
 gitnexus index indexes/mageos --name mageos
 
 # Hyvä themes (skip if you don't use Hyvä)
 mkdir -p indexes/hyva/.gitnexus
-curl -fSL $RELEASES/hyva-$HYVA/gitnexus-index.tar.gz | tar xz -C indexes/hyva/.gitnexus/
+curl -fSL $RELEASES/hyva-$HYVA/gitnexus-index-hyva-$HYVA.tar.gz | tar xz -C indexes/hyva/.gitnexus/
 gitnexus index indexes/hyva --name hyva
 
 # Magento runtime PHP deps (laminas, symfony, monolog, …) — paired with the Mage-OS version
 mkdir -p indexes/deps/.gitnexus
-curl -fSL $RELEASES/deps-$MAGEOS/gitnexus-index.tar.gz | tar xz -C indexes/deps/.gitnexus/
+curl -fSL $RELEASES/deps-$MAGEOS/gitnexus-index-deps-$MAGEOS.tar.gz | tar xz -C indexes/deps/.gitnexus/
 gitnexus index indexes/deps --name deps
 
 # Group them for unified MCP queries
@@ -463,17 +463,17 @@ The smoothest way is to bundle code changes and the artifacts together as a PR:
 1. **Fork** [ProxiBlue/mage-os-gitnexus](https://github.com/ProxiBlue/mage-os-gitnexus) and create a branch.
 2. **Publish your tarballs on a GitHub release in your fork** (since the artifacts are too large for the repo itself):
    ```bash
-   gh release create mageos-$MAGEOS gitnexus-index-mageos-$MAGEOS.tar.gz#gitnexus-index.tar.gz \
+   gh release create mageos-$MAGEOS gitnexus-index-mageos-$MAGEOS.tar.gz \
      --title "Mage-OS $MAGEOS index" \
      --notes "Pre-built GitNexus index for Mage-OS $MAGEOS. Built by <you> on <date>."
-   gh release create hyva-$HYVA gitnexus-index-hyva-$HYVA.tar.gz#gitnexus-index.tar.gz \
+   gh release create hyva-$HYVA gitnexus-index-hyva-$HYVA.tar.gz \
      --title "Hyvä $HYVA index" \
      --notes "Pre-built GitNexus index for Hyvä default-theme $HYVA. Built by <you> on <date>."
-   gh release create deps-$MAGEOS gitnexus-index-deps-$MAGEOS.tar.gz#gitnexus-index.tar.gz \
+   gh release create deps-$MAGEOS gitnexus-index-deps-$MAGEOS.tar.gz \
      --title "Mage-OS $MAGEOS runtime deps index" \
      --notes "Pre-built GitNexus index for the PHP runtime deps shipped with Mage-OS $MAGEOS. Built by <you> on <date>."
    ```
-   The `#gitnexus-index.tar.gz` suffix renames the asset on upload so the Dockerfile's stable URL pattern (`.../releases/download/<tag>/gitnexus-index.tar.gz`) keeps working. Skip whichever targets you didn't rebuild.
+   The Dockerfile expects the asset filename to include the version (`gitnexus-index-<target>-<version>.tar.gz`) — matching the local file's name on upload keeps the URL pattern stable. Skip whichever targets you didn't rebuild.
 3. **Update the [Available versions](#available-versions) tables in this README** to add your row(s) — include files / nodes / edges from your `meta.json`'s `stats` object. Link the release tag to the release on your fork for now.
 4. **Open a pull request** describing what you indexed (Mage-OS version, Hyvä version, which targets you built, any non-default `.gitnexusignore` tweaks, build time, host specs). Mention the upstream `gitnexus@<version>` your image used. **Always pair `deps-X.Y.Z` with `mageos-X.Y.Z`** — never publish a `deps-` release built against a different Mage-OS version than the tag suggests.
 5. We'll review, then either re-publish the release on this repo and update the README links, or merge as-is if pointing at your fork is the cleanest path.
