@@ -19,6 +19,9 @@ RUN node /tmp/fix-oom.js && rm /tmp/fix-oom.js
 # Create directories
 RUN mkdir -p /workspace/.gitnexus /client /root/.gitnexus /root/.gitnexus/groups/mageos-project
 
+# Default .gitnexusignore for rebuild mode
+COPY index/.gitnexusignore /workspace/.gitnexusignore
+
 # Download pre-built Mage-OS index
 ARG VERSION=2.3.0
 ARG INDEX_URL=https://github.com/ProxiBlue/mage-os-gitnexus/releases/download/v${VERSION}/gitnexus-index.tar.gz

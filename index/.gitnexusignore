@@ -1,0 +1,42 @@
+# Override hardcoded vendor ignore — must negate parent first for children to work
+!vendor/
+!vendor/mage-os/
+!vendor/hyva-themes/
+
+# Re-ignore everything else inside vendor
+vendor/*
+!vendor/mage-os/
+!vendor/hyva-themes/
+
+# Exclude non-essential mage-os packages
+vendor/mage-os/language-*
+vendor/mage-os/sample-data-media
+vendor/mage-os/composer*
+vendor/mage-os/inventory-composer-installer
+vendor/mage-os/magento-allure-phpunit
+vendor/mage-os/magento-coding-standard
+vendor/mage-os/magento-composer-installer
+vendor/mage-os/magento2-functional-testing-framework
+vendor/mage-os/php-compatibility-fork
+vendor/mage-os/zend-*
+vendor/mage-os/magento-zf-db
+
+# Exclude directories
+gitnexus-magento/
+.claude/
+patches/
+LokiCheckout*
+
+# Exclude files
+*.md
+.env*
+
+# Exclude tests everywhere
+**/Test/
+**/Tests/
+**/test/
+**/tests/
+
+# Exclude sample data modules
+**/*-sample-data/
+**/module-*-sample-data

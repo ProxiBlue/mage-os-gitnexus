@@ -174,14 +174,42 @@ gitnexus index .
 |-----|-----------------|-------|-------|
 | `2.3.0` | Mage-OS 2.3.0 | 189,396 | 489,068 |
 
-## Building the index yourself
+## Rebuilding the index
 
-See `scripts/build-index.sh`. GitNexus currently requires patches for large PHP vendor trees:
+To rebuild the Mage-OS index from scratch (e.g., for a new Mage-OS version, or to include additional vendor packages), use the same Docker image with `REBUILD=1`. No gitnexus installation needed on your host.
+
+```bash
+docker run --rm -it \
+  -e REBUILD=1 \
+  -v /path/to/your/mageos/project:/project \
+  -v mageos-index:/output \
+  mage-os-gitnexus:2.3.0
+```
+
+This:
+1. Mounts your full Mage-OS project at `/project`
+2. Runs `gitnexus analyze` inside the container (~60-90 minutes)
+3. Copies the new index to `/output/` (persistent Docker volume)
+
+The container includes all necessary patches for large PHP vendor trees. A default `.gitnexusignore` is applied if your project doesn't have one.
+
+To use the rebuilt index, copy it back:
+
+```bash
+# Copy from the Docker volume to your project
+docker run --rm -v mageos-index:/input -v /path/to/project/.gitnexus:/output alpine cp /input/lbug /input/meta.json /output/
+
+# Or replace the pre-built index for future containers
+docker run --rm -v mageos-index:/input -v $(pwd)/index:/output alpine cp /input/lbug /input/meta.json /output/
+docker build -t mage-os-gitnexus:custom .
+```
+
+### Patches applied
+
+GitNexus currently requires patches for large PHP vendor trees. These are applied automatically in the Docker image:
 - [PR #1800](https://github.com/abhigyanpatwari/GitNexus/pull/1800) — OOM in deferred-calls
 - [PR #1801](https://github.com/abhigyanpatwari/GitNexus/pull/1801) — phtml scope extraction
 - [PR #1808](https://github.com/abhigyanpatwari/GitNexus/pull/1808) — OOM in namespace-siblings
-
-These patches are applied automatically in the Docker image.
 
 ## License
 
