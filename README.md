@@ -185,4 +185,10 @@ These patches are applied automatically in the Docker image.
 
 ## License
 
-MIT
+The Dockerfile, scripts, and documentation in this repository are MIT licensed.
+
+The pre-built index data (`.gitnexus/lbug`, `meta.json`) is generated output — not subject to GitNexus's source license.
+
+The Docker image installs [GitNexus](https://github.com/abhigyanpatwari/GitNexus) which is licensed under [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0). By using the Docker image, you agree to GitNexus's license terms.
+
+> Required Notice: Copyright Abhigyan Patwari (https://github.com/abhigyanpatwari/GitNexus)
