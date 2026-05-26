@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
 
+# Keep stdout clean for the eventual `exec gitnexus "$@"`. MCP mode uses
+# stdout for JSON-RPC; any setup chatter on stdout breaks the protocol on
+# strict clients. Save original stdout on fd 3, route everything else to
+# stderr, then restore stdout just before exec'ing gitnexus.
+exec 3>&1 1>&2
+
 # ── Mode: rebuild ──────────────────────────────────────────────────────────
 # Mount your full Mage-OS project at /project and set REBUILD=1 to run a
 # full gitnexus analyze. The new index replaces the pre-built one.
@@ -112,6 +118,8 @@ if [ "${REBUILD:-0}" = "1" ]; then
     exit 0
   fi
 
+  # Restore stdout for the actual gitnexus command
+  exec 1>&3 3>&-
   exec gitnexus "$@"
   exit 0
 fi
@@ -207,6 +215,10 @@ else
 fi
 
 echo ""
+
+# Restore stdout (fd 3 holds the original) so gitnexus mcp can speak
+# JSON-RPC cleanly without our setup chatter polluting the protocol.
+exec 1>&3 3>&-
 
 # Run the requested command (default: gitnexus mcp)
 exec gitnexus "$@"
