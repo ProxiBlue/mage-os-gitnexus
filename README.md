@@ -603,7 +603,7 @@ The image uses `gitnexus@1.6.6-rc.55+` which includes fixes for large PHP vendor
 
 ### This repository
 
-The Dockerfile, scripts, `.gitnexusignore` files, and documentation in **this** repository are MIT licensed.
+The Dockerfile, scripts, `.gitnexusignore` files, [augmenter source](augmenter/), [examples](examples/), [skills](skills/), and documentation in **this** repository are MIT licensed — see [LICENSE](LICENSE).
 
 The pre-built index data (`.gitnexus/lbug`, `meta.json`) is generated output — not subject to GitNexus's source license.
 
