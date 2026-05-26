@@ -78,6 +78,8 @@ Add to `.mcp.json` (Claude Code, Cursor, or any MCP client):
 }
 ```
 
+> **Running Claude Code inside DDEV / Lando / another container?** `docker run` from inside that container generally won't work (no docker daemon access, or hits a different daemon than where you built the image). Use the HTTP transport instead — see [Bonus: connect MCP to the same container](#bonus-connect-mcp-to-the-same-container) for the `http://host.docker.internal:4747/api/mcp` setup.
+
 ## File reads — matching your environment
 
 The index stores **relative** paths (`app/code/Foo.php`, not `/var/www/html/app/code/Foo.php`), so it's portable across environments. The MCP server only needs to know where to look when it reads file *contents* via tools like `read_file`. Set `PROJECT_ROOT` to wherever your Mage-OS code lives inside the container:
@@ -165,11 +167,16 @@ If you change the port, the hosted UI page at `gitnexus.vercel.app` won't auto-f
 
 **Privacy / compliance**: the UI page (HTML + JS) is loaded from `gitnexus.vercel.app`, so the page's JavaScript can in principle log usage. The *server* in the container makes no outbound calls during normal operation (audited — only `gitnexus publish` ever talks to GitHub, and only when explicitly invoked). If the hosted UI is a concern for client-confidential work, stick to the [MCP integration](#adding-your-own-code) — graph queries through Claude Code never touch a hosted page.
 
-### Bonus: piggyback MCP on the same container
+### Bonus: connect MCP to the same container
 
-If you're already running the UI as a service, you can wire your MCP client to `docker exec` into the same container instead of spawning a fresh `docker run` per IDE session. The container stays warm, the lbug files stay in the OS page cache, and you don't pay container-startup cost on every MCP connection.
+The `serve` container exposes both the web UI HTTP API **and** an MCP endpoint over StreamableHTTP at `/api/mcp`. If the UI service is already running, MCP clients can connect to it directly instead of spawning a fresh `docker run` per session.
 
-`.mcp.json`:
+Two patterns, depending on where your MCP client lives:
+
+#### Option A — Claude Code on the host (`docker exec` stdio)
+
+If Claude Code / Cursor runs natively on the host with docker access:
+
 ```json
 {
   "mcpServers": {
@@ -181,9 +188,45 @@ If you're already running the UI as a service, you can wire your MCP client to `
 }
 ```
 
-The container name follows compose's `<project>-<service>-<replica>` convention; verify yours with `docker ps --format '{{.Names}}'`. If you renamed the project directory, the name changes — pin it explicitly with `container_name: mageos-gitnexus` in `docker-compose.yml` if you want stability.
+Container name follows compose's `<project>-<service>-<replica>` convention; verify with `docker ps --format '{{.Names}}'`. Pin it explicitly via `container_name: mageos-gitnexus` in `docker-compose.yml` if you want stability across project-directory renames.
 
-**Worth it?** Honest answer: small win. MCP clients only spawn the server once per IDE session (not per query), so the saving is ~1-2s when you start Claude Code — about 10-20s a day total. It's a free upgrade *if you're already running the UI* (same container does both jobs); not worth running a service just for this otherwise.
+#### Option B — Claude Code inside DDEV / Lando / another container (HTTP)
+
+If Claude Code runs *inside* your Mage-OS dev container (where it can't easily reach docker on the host), connect to the gitnexus container's StreamableHTTP MCP endpoint instead:
+
+```json
+{
+  "mcpServers": {
+    "gitnexus-mageos": {
+      "type": "http",
+      "url": "http://host.docker.internal:4747/api/mcp",
+      "description": "Pre-built GitNexus knowledge graph for Mage-OS (via host-side container)"
+    }
+  }
+}
+```
+
+Requirements:
+- The host-side gitnexus container must be running with port 4747 reachable on all interfaces — that's the default in our `docker-compose.yml` (`0.0.0.0:4747->4747/tcp`).
+- `host.docker.internal` resolves to the host from inside containers — Docker Desktop has it built-in; DDEV configures it on Linux out of the box; Lando setups may need manual configuration.
+
+Verify connectivity from inside your dev container before editing `.mcp.json`:
+
+```bash
+# Inside DDEV (or whichever container Claude Code runs in)
+curl -sS -o /dev/null -w 'HTTP %{http_code}\n' -m 3 http://host.docker.internal:4747/
+# Expect: HTTP 200
+```
+
+If that 404s or times out, the gitnexus container isn't running or isn't reachable — bring it up with `docker compose up -d gitnexus-ui` on the host first.
+
+**Why prefer this over `docker run` from inside DDEV** — invoking `docker run` from a DDEV container would either fail (no docker socket exposed) or run a wholly separate, empty docker daemon if a socket *is* exposed. The HTTP route avoids the docker-in-docker complexity entirely — the dev container just makes plain HTTP requests to the host.
+
+**Trade-offs vs `docker run --rm -i`**:
+- ✅ No container spin-up cost per MCP session start (warm process, warm lbug page cache)
+- ✅ Works from inside DDEV without docker-in-docker plumbing
+- ⚠️ Container must be running before Claude Code starts; if you `docker compose down`, MCP calls fail until you bring it back up. `restart: unless-stopped` in the compose handles daemon restarts / reboots.
+- ⚠️ Single gitnexus process — if it crashes, all MCP clients lose the connection simultaneously (vs `docker run` which is isolated per session).
 
 ## Adding your own code
 
