@@ -82,6 +82,18 @@ RUN if [ "${INCLUDE_DEPS}" != "1" ]; then \
       && rm /tmp/deps.tar.gz; \
     fi
 
+# Build/repair FTS indexes for each present lbug. Pre-built archives from
+# GitHub releases don't include populated FTS tables (the BM25 keyword-search
+# tables are built on demand by `gitnexus analyze --repair-fts`). Without this,
+# MCP `query` calls return a "FTS indexes missing — keyword search degraded"
+# warning and degraded results.
+RUN for name in mageos hyva deps; do \
+      if [ -f "/indexes/$name/.gitnexus/lbug" ]; then \
+        echo "[mage-os-gitnexus] Repairing FTS for $name..."; \
+        cd "/indexes/$name" && gitnexus analyze --repair-fts --skip-git . 2>&1 | tail -3; \
+      fi; \
+    done
+
 # Register present indexes. All point at the same repo root (PROJECT_ROOT,
 # overridable at runtime). Paths in each graph are stored relative.
 RUN node -e " \
