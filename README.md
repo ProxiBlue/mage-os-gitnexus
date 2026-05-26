@@ -16,10 +16,11 @@ Three pre-built indexes, served together as a [GitNexus group](https://github.co
 
 - Class/interface/method graph with inheritance, calls, imports
 - PHP scope-resolution with cross-file reference tracking
+- **XML-derived edges** for plugins, observers, layout block↔template bindings, REST/frontend routes — see [`augmenter/`](augmenter/README.md). Magento wires most of its dependencies in XML (di.xml, events.xml, layout XML, webapi.xml, routes.xml) which PHP static analysis can't see. The bundled augmenter parses these and injects the missing edges; published index releases already have them baked in.
 - Splitting by vendor isolates crashes during rebuild and lets users skip pieces they don't need
 - The `deps` index closes the blind spot where Magento code calls into framework libraries (`Symfony\Console`, `Laminas\Di`, `Monolog\Logger`, etc.) — pair it with the matching Mage-OS version
 
-See [Available versions](#available-versions) for stats per release.
+See [Available versions](#available-versions) for stats per release, or [`augmenter/README.md`](augmenter/README.md) for a worked example contrasting what queries look like with and without the XML augmentation.
 
 ### What groups give you (and what they don't)
 
@@ -324,9 +325,11 @@ Ask your AI assistant natural language questions:
 
 The AI translates these to GitNexus MCP tool calls automatically.
 
-### Worked example — mapping the PayPal checkout flow
+### Worked examples
 
-For a concrete walkthrough showing how to use the MCP tools effectively, see **[examples/paypal-checkout-flow.md](examples/paypal-checkout-flow.md)**. It maps every file and function involved in placing a PayPal order against the Mage-OS 2.3.0 index — comparing direct Cypher graph queries vs. symbol-context tracing vs. keyword search, with file/symbol counts and a token-cost comparison against an unstructured Explore-agent approach (~3-4× more expensive without the graph).
+- **[examples/paypal-checkout-flow.md](examples/paypal-checkout-flow.md)** — mapping every file and function involved in placing a PayPal order against the Mage-OS 2.3.0 index. Compares direct Cypher graph queries vs. symbol-context tracing vs. keyword search, with file/symbol counts and a token-cost comparison against an unstructured Explore-agent approach (~3-4× more expensive without the graph).
+
+- **[augmenter/README.md](augmenter/README.md)** — *"show me all plugins on the Cart model"* contrasted with and without the XML augmentation. Demonstrates how a question that requires multiple MCP calls + a filesystem grep fallback (and still misses results) reduces to a single deterministic Cypher query once Magento's XML wiring is in the graph.
 
 ### Claude Code skills (optional)
 
