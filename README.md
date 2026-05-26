@@ -324,6 +324,10 @@ Ask your AI assistant natural language questions:
 
 The AI translates these to GitNexus MCP tool calls automatically.
 
+### Worked example — mapping the PayPal checkout flow
+
+For a concrete walkthrough showing how to use the MCP tools effectively, see **[examples/paypal-checkout-flow.md](examples/paypal-checkout-flow.md)**. It maps every file and function involved in placing a PayPal order against the Mage-OS 2.3.0 index — comparing direct Cypher graph queries vs. symbol-context tracing vs. keyword search, with file/symbol counts and a token-cost comparison against an unstructured Explore-agent approach (~3-4× more expensive without the graph).
+
 ### Claude Code skills (optional)
 
 GitNexus ships skill files that teach Claude Code how to use the tools more effectively (exploring, impact analysis, debugging, refactoring). To install them in your project:
