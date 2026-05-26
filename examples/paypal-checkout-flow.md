@@ -115,4 +115,4 @@ The NVP API class (`Model/Api/Nvp.php`, lines 25–1,819) exposes all PayPal API
 
 ## Cost comparison
 
-The Cypher approach used **~25–35k tokens** (~$1–2 USD on Opus) across 6 MCP calls. An equivalent manual search using an Explore agent reading dozens of files consumed **~70–100k tokens** (~$2–4 USD) — 3–4x more expensive, with unstructured output that required manual verification.
+The Cypher approach used **~25–35k tokens** ($1–2 USD on Opus) across 6 MCP calls. An equivalent manual search using an Explore agent reading dozens of files consumed **~70–100k tokens** (~$2–4 USD) — 3–4x more expensive, with unstructured output that required manual verification.
