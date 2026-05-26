@@ -333,18 +333,36 @@ The AI translates these to GitNexus MCP tool calls automatically.
 
 - **[augmenter/README.md](augmenter/README.md)** — *"show me all plugins on the Cart model"* contrasted with and without the XML augmentation. Demonstrates how a question that requires multiple MCP calls + a filesystem grep fallback (and still misses results) reduces to a single deterministic Cypher query once Magento's XML wiring is in the graph.
 
-### Claude Code skills (optional)
+### Claude Code skills (recommended)
 
-GitNexus ships skill files that teach Claude Code how to use the tools more effectively (exploring, impact analysis, debugging, refactoring). To install them in your project:
+Two skill packs teach Claude Code (and compatible clients like Cursor) how to use this index effectively. Without them everything still works, but the AI tends to fall back to file-level imports + grep instead of using the proper graph queries — slower, less accurate, more tokens.
+
+#### Skill 1: GitNexus tools (generic)
 
 ```bash
 # Requires gitnexus installed locally
 gitnexus analyze --skills
 ```
 
-This generates `.claude/skills/gitnexus/` with the latest skill files from the GitNexus project. Skills evolve with each GitNexus release — always fetch fresh rather than copying static files.
+Generates `.claude/skills/gitnexus/` with the latest skill files from the GitNexus project. Teaches the AI how to use `query`, `context`, `impact`, `cypher`, etc.
 
-Without skills, the MCP tools still work — Claude Code discovers them via the MCP protocol. Skills just provide richer prompting guidance.
+#### Skill 2: Magento XML augmentation (this repo)
+
+Teaches the AI about the XML-derived edges in the mageos / hyva / deps indexes — plugin registrations, observer bindings, layout→template links, REST/frontend routes. Without it, the AI doesn't know to query `WRAPS` edges with `reason='magento:di:plugin'` and falls back to generic import-tracing.
+
+```bash
+# Option A — drop the skill into your project's .claude/skills/
+mkdir -p .claude/skills/gitnexus-magento
+curl -fSL https://raw.githubusercontent.com/ProxiBlue/mage-os-gitnexus/main/skills/gitnexus-magento/SKILL.md \
+  -o .claude/skills/gitnexus-magento/SKILL.md
+
+# Option B — clone or symlink (auto-updates with git pull on this repo)
+ln -s /path/to/mage-os-gitnexus/skills/gitnexus-magento .claude/skills/gitnexus-magento
+```
+
+Restart Claude Code after either option so it picks up the new skill. To verify it loaded, ask: *"do you have any skills about the gitnexus magento augmenter?"* — the AI should mention the `magento:di:plugin` / `magento:events:observer:*` edge patterns.
+
+The skill file itself lives at [`skills/gitnexus-magento/SKILL.md`](skills/gitnexus-magento/SKILL.md) in this repo and is human-readable — worth a skim even if you're not using Claude Code.
 
 ### CLI queries
 

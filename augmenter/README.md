@@ -100,6 +100,20 @@ Inside the container, the sequence is:
 
 The published GitHub release tarball (`mageos-X.Y.Z`) therefore contains a graph that already has the XML edges baked in. End users running the image don't run the augmenter themselves — they just get the result.
 
+## Teaching the AI to use these edges
+
+The augmented graph is only useful if the AI assistant knows to query it. The augmenter ships a Claude Code skill at [`../skills/gitnexus-magento/SKILL.md`](../skills/gitnexus-magento/SKILL.md) that documents the edge taxonomy (`magento:di:plugin`, `magento:events:observer:*`, etc.) and shows the canonical Cypher patterns for plugin/observer/route queries. **Without this skill installed, the AI tends to fall back to file-level imports + grep instead of using the proper graph edges** — slower, less accurate, more tokens.
+
+Quick install (drop into your project's `.claude/skills/`):
+
+```bash
+mkdir -p .claude/skills/gitnexus-magento
+curl -fSL https://raw.githubusercontent.com/ProxiBlue/mage-os-gitnexus/main/skills/gitnexus-magento/SKILL.md \
+  -o .claude/skills/gitnexus-magento/SKILL.md
+```
+
+Restart Claude Code. See the main [README's Skills section](../README.md#claude-code-skills-recommended) for full install / verify steps.
+
 ## Failure behavior
 
 The augmenter is **best-effort**. A bad XML file, an unresolved FQCN, a schema mismatch against a future GitNexus version, or any other write failure produces a warning on stderr and a count in the final summary — it does **not** fail the rebuild. The base PHP graph from `gitnexus analyze` is the load-bearing artifact; XML augmentation is additive value on top.
