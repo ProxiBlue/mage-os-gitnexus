@@ -150,9 +150,17 @@ export async function parseAndMapWebapiXml(projectRoot: string): Promise<WebapiM
           nodes.push(routeNode);
         }
 
-        // Edge: File → Route
+        // Edge: File → Route (lbug schema allows File/Function/Method → Route,
+        // NOT Interface → Route. The resolver returns an Interface node ID for
+        // service contracts like Magento\Quote\Api\CartManagementInterface, so
+        // convert it to the corresponding File node ID by stripping the symbol
+        // name from the tail of `Label:path:Name`.)
+        const idParts = nodeResolved.nodeId.split(':');
+        const filePath = idParts.length >= 3 ? idParts.slice(1, -1).join(':') : '';
+        const fileNodeId = filePath ? `File:${filePath}` : nodeResolved.nodeId;
+
         const edge: AugmentEdge = {
-          sourceId: nodeResolved.nodeId,
+          sourceId: fileNodeId,
           targetId: routeId,
           type: 'HANDLES_ROUTE',
           confidence: 1.0,

@@ -101,6 +101,23 @@ if [ "${REBUILD:-0}" = "1" ]; then
     GITNEXUS_WORKER_SUB_BATCH_MAX_BYTES="$SUB_BATCH_BYTES" \
     gitnexus analyze $ANALYZE_ARGS 2>&1
 
+    # XML augmentation — parse Magento's di.xml / events / layout / webapi /
+    # routes and inject the corresponding edges into the lbug. Best-effort:
+    # any failure logs a warning and does NOT block the rebuild. The base
+    # PHP graph from `gitnexus analyze` is the load-bearing artifact;
+    # XML augmentation is additive value on top.
+    # Skip with `-e AUGMENT=0` or for targets where there's no Magento XML
+    # to find (deps = pure framework libs, no Magento configs).
+    if [ "${AUGMENT:-1}" = "1" ] && [ "$T" != "deps" ] && [ -f /project/vendor/composer/autoload_psr4.php ]; then
+      echo "  Augmenting with XML-derived edges..."
+      node /augmenter/dist/cli.js augment /project 2>&1 | tail -20 || \
+        echo "  [augment] warning: augmentation failed (non-fatal)"
+    elif [ "$T" = "deps" ]; then
+      echo "  Skipping XML augmentation (TARGET=deps has no Magento configs)."
+    elif [ "${AUGMENT:-1}" != "1" ]; then
+      echo "  Skipping XML augmentation (AUGMENT=$AUGMENT)."
+    fi
+
     if [ -d "/output" ]; then
       mkdir -p "/output/$T"
       cp /project/.gitnexus/lbug "/output/$T/lbug"
@@ -184,6 +201,19 @@ if [ -d "$MOUNTS_DIR" ]; then
 
       NODE_OPTIONS='--max-old-space-size=4096' gitnexus analyze \
         --skip-agents-md --skip-skills --index-only 2>&1 | tail -3
+
+      # XML augmentation for mounts that look like a full Magento project
+      # (have their own vendor/composer/autoload_psr4.php). Scoped to this
+      # mount's lbug; cross-mount references to the pre-built mageos lbug
+      # cannot be linked (ladybugdb's COPY is per-database — that's the
+      # split-index trade-off documented in the README).
+      # Skip with -e AUGMENT=0.
+      if [ "${AUGMENT:-1}" = "1" ] && [ -f "${MOUNT_PATH}vendor/composer/autoload_psr4.php" ]; then
+        echo "  Augmenting ${MOUNT_NAME} with XML-derived edges..."
+        node /augmenter/dist/cli.js augment "$MOUNT_PATH" 2>&1 | tail -10 || \
+          echo "  [augment] warning: augmentation failed for ${MOUNT_NAME} (non-fatal)"
+      fi
+
       cd /workspace
     fi
 

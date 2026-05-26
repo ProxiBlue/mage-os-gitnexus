@@ -71,6 +71,10 @@ export async function generateEdgeCsvFiles(
 ): Promise<string[]> {
   if (edges.length === 0) return [];
 
+  // Ensure csvDir exists — the orchestrator passes `<project>/.gitnexus/magento-csv`
+  // which doesn't exist on a fresh run.
+  await fs.mkdir(csvDir, { recursive: true });
+
   // Group edges by from-label → to-label
   const groups = new Map<string, AugmentEdge[]>();
   for (const edge of edges) {
@@ -263,4 +267,81 @@ async function runCypherQuery(dbPath: string, query: string): Promise<void> {
       throw new Error(`lbug query failed: ${msg}\nQuery: ${query}`);
     }
   });
+}
+
+/**
+ * Read-mode counterpart of runCypherQuery — returns the result rows.
+ */
+async function runCypherRead(dbPath: string, query: string): Promise<unknown[]> {
+  let mod;
+  try {
+    mod = await import(
+      '/usr/local/lib/node_modules/gitnexus/dist/core/lbug/lbug-adapter.js'
+    );
+  } catch (err) {
+    const msg = (err as Error)?.message ?? String(err);
+    throw new Error(
+      `lbug adapter not loadable: ${msg}`,
+    );
+  }
+  let rows: unknown[] = [];
+  await mod.withLbugDb(dbPath, async () => {
+    rows = await mod.executeQuery(query);
+  });
+  return rows;
+}
+
+/**
+ * Pre-flight: filter `edges` to only those where BOTH endpoint node IDs
+ * already exist in the lbug. Without this, ladybugdb's COPY rejects the
+ * *whole* CSV when any single row violates the foreign-key constraint —
+ * dropping thousands of valid edges because of one bad reference.
+ *
+ * Typical reason an endpoint is missing: the augmenter parsed XML from a
+ * vendor package the lbug doesn't include (e.g. parsed all of vendor/ but
+ * the lbug only indexed vendor/mage-os/). The skipped count is returned so
+ * the orchestrator can surface it in the summary.
+ */
+export async function filterEdgesByExistingNodes(
+  edges: AugmentEdge[],
+  dbPath: string,
+): Promise<{ kept: AugmentEdge[]; skipped: number }> {
+  if (edges.length === 0) return { kept: [], skipped: 0 };
+
+  // Collect unique IDs grouped by label
+  const byLabel = new Map<string, Set<string>>();
+  for (const edge of edges) {
+    for (const id of [edge.sourceId, edge.targetId]) {
+      const label = extractLabel(id);
+      if (!byLabel.has(label)) byLabel.set(label, new Set());
+      byLabel.get(label)!.add(id);
+    }
+  }
+
+  // Query the lbug for which IDs exist (chunked to keep query strings sane)
+  const CHUNK = 500;
+  const existing = new Set<string>();
+  for (const [label, idSet] of byLabel) {
+    const ids = Array.from(idSet);
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const batch = ids.slice(i, i + CHUNK);
+      // Escape single quotes for Cypher string literals
+      const idList = batch.map((id) => `'${id.replace(/'/g, "\\'")}'`).join(', ');
+      // Quote the label in case it collides with a reserved word
+      const query = `MATCH (n:\`${label}\`) WHERE n.id IN [${idList}] RETURN n.id AS id`;
+      try {
+        const rows = (await runCypherRead(dbPath, query)) as Array<{ id: string }>;
+        for (const row of rows) existing.add(row.id);
+      } catch (err) {
+        // Label might not exist in this lbug — skip gracefully
+        const msg = (err as Error)?.message ?? String(err);
+        if (!/does not exist|Cannot find/i.test(msg)) {
+          console.warn(`[lbug-writer] node-existence probe for label "${label}" failed: ${msg.split('\n')[0]}`);
+        }
+      }
+    }
+  }
+
+  const kept = edges.filter((e) => existing.has(e.sourceId) && existing.has(e.targetId));
+  return { kept, skipped: edges.length - kept.length };
 }

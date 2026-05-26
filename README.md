@@ -233,6 +233,8 @@ If that 404s or times out, the gitnexus container isn't running or isn't reachab
 
 Mount any number of code folders at `/mounts/<name>`. Each becomes a separate index, automatically linked with the Mage-OS graph for cross-index queries. **No gitnexus needed on your host** — the container handles all indexing.
 
+> **XML augmentation for mounts:** If a mount looks like a full Magento project (contains `vendor/composer/autoload_psr4.php` next to the mounted directory), the [XML augmenter](augmenter/README.md) runs automatically after the first-time index so the mount's `di.xml` / `events.xml` / layout / etc. become queryable as graph edges. Disable with `-e AUGMENT=0`. Cross-mount references (e.g., a plugin in your custom mount targeting a core Magento class) **cannot** be linked — both endpoints would need to live in the same lbug. For full cross-augmentation, do a unified `REBUILD=1` against your whole project instead.
+
 ### Examples
 
 **Single custom module:**
@@ -497,6 +499,7 @@ If the build OOMs, runs out of file descriptors, or trips a tree-sitter native c
 | `GITNEXUS_MAX_FILE_SIZE` | `512` | Skip files larger than this (KB). Lower it to dodge problematic minified blobs |
 | `GITNEXUS_SUB_BATCH_BYTES` | `16777216` | Worker sub-batch byte budget (16 MB default) |
 | `GITNEXUS_VERBOSE` | `0` | Set to `1` for `--verbose` output (prints the file being parsed — useful for pinpointing crashes) |
+| `AUGMENT` | `1` | Run the [XML augmenter](augmenter/README.md) after `gitnexus analyze` to inject Magento di.xml / events / layout / webapi / routes edges into the lbug. Set to `0` to skip. Auto-skipped for `TARGET=deps` (pure framework libs have no Magento configs) and when the project lacks `vendor/composer/autoload_psr4.php`. |
 
 Example — defensive run when a crash is suspected:
 

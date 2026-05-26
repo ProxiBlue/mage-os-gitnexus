@@ -82,6 +82,17 @@ RUN if [ "${INCLUDE_DEPS}" != "1" ]; then \
       && rm /tmp/deps.tar.gz; \
     fi
 
+# Build + install the Magento XML augmenter (parses di.xml / layout / events /
+# webapi / routes and injects matching edges into the lbug). It's used by both
+# the REBUILD entrypoint branch (against the user's project) and the serve-mode
+# mount loop (per-mount XML augmentation when AUGMENT=1).
+COPY augmenter /augmenter
+RUN cd /augmenter \
+ && npm install --no-audit --no-fund 2>&1 | tail -5 \
+ && npm run build 2>&1 | tail -3 \
+ && npm prune --omit=dev 2>&1 | tail -3 \
+ && rm -rf /augmenter/test /augmenter/.gitignore /augmenter/vitest.config.ts
+
 # Build/repair FTS indexes for each present lbug. Pre-built archives from
 # GitHub releases don't include populated FTS tables (the BM25 keyword-search
 # tables are built on demand by `gitnexus analyze --repair-fts`). Without this,

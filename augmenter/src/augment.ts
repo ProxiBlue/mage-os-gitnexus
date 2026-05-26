@@ -8,6 +8,7 @@ import { parseAndMapWebapiXml } from './parsers/webapi-xml.js';
 import { parseAndMapRoutesXml } from './parsers/routes-xml.js';
 import {
   cleanupMagentoEdges,
+  filterEdgesByExistingNodes,
   writeEdges,
   writeNodes,
   AugmentEdge,
@@ -127,12 +128,29 @@ export async function augment(projectPath: string): Promise<void> {
     failed: allNodes.length,
   };
 
-  // 8. Write all edges. Per-CSV-pair failures are captured inside writeEdges.
-  const writeResult = (await runPhase('write-edges', () => writeEdges(allEdges, dbPath, csvDir))) ?? {
+  // 7.5. Pre-flight: drop edges whose source or target node doesn't exist in
+  // the lbug. ladybugdb's bulk COPY rejects the entire CSV on any FK miss,
+  // so a single dangling reference would kill thousands of valid edges.
+  // Typical cause: augmenter parsed XML from a vendor package outside this
+  // lbug's indexed scope (e.g. project-wide XML, mageos-only lbug).
+  const filterResult = (await runPhase('filter-existing-nodes', () =>
+    filterEdgesByExistingNodes(allEdges, dbPath),
+  )) ?? { kept: allEdges, skipped: 0 };
+  const filteredEdges = filterResult.kept;
+  if (filterResult.skipped > 0) {
+    console.log(
+      `[augment] Pre-flight: ${filterResult.skipped} edges skipped (one or both endpoint nodes not in lbug); ${filteredEdges.length} kept.`,
+    );
+  }
+
+  // 8. Write filtered edges. Per-CSV-pair failures are captured inside writeEdges.
+  const writeResult = (await runPhase('write-edges', () => writeEdges(filteredEdges, dbPath, csvDir))) ?? {
     edgesInjected: 0,
-    edgesSkipped: 0,
-    edgesFailed: allEdges.length,
+    edgesSkipped: filterResult.skipped,
+    edgesFailed: filteredEdges.length,
   };
+  // Carry through the pre-flight skip count in the summary
+  writeResult.edgesSkipped = (writeResult.edgesSkipped ?? 0) + filterResult.skipped;
 
   // 9. Print summary — never throws; runs even if phases above failed.
   const anyFailures = nodeResult.failed > 0 || writeResult.edgesFailed > 0;
