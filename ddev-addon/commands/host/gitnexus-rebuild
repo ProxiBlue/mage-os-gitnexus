@@ -68,8 +68,15 @@ fi
 # Discover mount short-names from the project's docker-compose.gitnexus.yaml.
 # Convention: lines like `- "${DDEV_APPROOT}:/mounts/<short-name>"` or
 # `- "${DDEV_APPROOT}/vendor:/mounts/<short-name>-vendor"`.
-MAIN_MOUNT=$(awk -F'/mounts/' '/\/mounts\// {print $2}' "$COMPOSE_FILE" | awk -F'[":]' '{print $1}' | grep -v -- '-vendor$' | head -1)
-VENDOR_MOUNT=$(awk -F'/mounts/' '/\/mounts\// {print $2}' "$COMPOSE_FILE" | awk -F'[":]' '{print $1}' | grep -- '-vendor$' | head -1)
+# Skip comment lines (start with optional whitespace then #) so block
+# comments inside the volumes section don't pollute the parse.
+parse_mounts() {
+  grep -v '^\s*#' "$COMPOSE_FILE" | \
+    awk -F'/mounts/' '/\/mounts\// {print $2}' | \
+    awk -F'[":]' '{print $1}'
+}
+MAIN_MOUNT=$(parse_mounts | grep -v -- '-vendor$' | head -1)
+VENDOR_MOUNT=$(parse_mounts | grep -- '-vendor$' | head -1)
 
 if [ -z "$MAIN_MOUNT" ]; then
   echo "[gitnexus-rebuild] No /mounts/ entries in $COMPOSE_FILE — is the addon installed correctly?"
