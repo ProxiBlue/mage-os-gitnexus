@@ -47,26 +47,35 @@ while [ $# -gt 0 ]; do
 done
 
 CONTAINER="ddev-${DDEV_SITENAME}-gitnexus"
+COMPOSE_FILE="${DDEV_APPROOT}/.ddev/docker-compose.gitnexus.yaml"
+IMAGE="mage-os-gitnexus:latest"
 NEEDS_RESTART=0
 
-if ! docker inspect "$CONTAINER" >/dev/null 2>&1; then
-  echo "[gitnexus-rebuild] Container $CONTAINER not running. Start with: ddev start"
+if [ ! -f "$COMPOSE_FILE" ]; then
+  echo "[gitnexus-rebuild] $COMPOSE_FILE not found — is the addon installed?"
   exit 1
 fi
 
-# Discover the mount short-name from the docker-compose config. The convention
-# is /mounts/<short-name> for main code; some projects add /mounts/<short-name>-vendor.
-MAIN_MOUNT=$(docker exec "$CONTAINER" ls /mounts/ 2>/dev/null | grep -v -- '-vendor$' | head -1)
-VENDOR_MOUNT=$(docker exec "$CONTAINER" ls /mounts/ 2>/dev/null | grep -- '-vendor$' | head -1)
+if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+  echo "[gitnexus-rebuild] $IMAGE not on local docker — rebuild from the addon repo"
+  exit 1
+fi
+
+# Discover mount short-names from the project's docker-compose.gitnexus.yaml.
+# Convention: lines like `- "${DDEV_APPROOT}:/mounts/<short-name>"` or
+# `- "${DDEV_APPROOT}/vendor:/mounts/<short-name>-vendor"`.
+MAIN_MOUNT=$(awk -F'/mounts/' '/\/mounts\// {print $2}' "$COMPOSE_FILE" | awk -F'[":]' '{print $1}' | grep -v -- '-vendor$' | head -1)
+VENDOR_MOUNT=$(awk -F'/mounts/' '/\/mounts\// {print $2}' "$COMPOSE_FILE" | awk -F'[":]' '{print $1}' | grep -- '-vendor$' | head -1)
 
 if [ -z "$MAIN_MOUNT" ]; then
-  echo "[gitnexus-rebuild] No mount found under /mounts/ — is the addon installed correctly?"
+  echo "[gitnexus-rebuild] No /mounts/ entries in $COMPOSE_FILE — is the addon installed correctly?"
   exit 1
 fi
 
 echo "[gitnexus-rebuild] Project: ${DDEV_SITENAME}"
-echo "[gitnexus-rebuild] Container: ${CONTAINER}"
 echo "[gitnexus-rebuild] Mounts detected — main: ${MAIN_MOUNT}, vendor: ${VENDOR_MOUNT:-<none>}"
+echo "[gitnexus-rebuild] Indexer runs as a one-shot container, INDEPENDENT of"
+echo "                   the project DDEV. ddev stop/restart will NOT kill it."
 echo ""
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -85,30 +94,62 @@ indexed_commit_for() {
 }
 
 # ──────────────────────────────────────────────────────────────────────────
-# Helper: trigger the per-mount rebuild inside the container. Drops the
-# cached .gitnexus/lbug and the .git scratchspace so gitnexus re-creates
-# them from scratch on next start. Then reloads the gitnexus serve process
-# by restarting the container.
+# Helper: trigger the per-mount rebuild in a ONE-SHOT container.
+#
+# Why one-shot (docker run --rm) instead of docker-exec into the running
+# gitnexus container: a `ddev stop` or `ddev restart` from the operator
+# would kill any in-flight `docker exec` work. The one-shot container is
+# its own docker resource — it's NOT part of the project's compose stack,
+# so DDEV operations don't touch it. Indexing survives.
+#
+# Resolves host source path from mount name by convention:
+#   <mount> == main   → $DDEV_APPROOT
+#   <mount> == *-vendor → $DDEV_APPROOT/vendor
+# Bind-mounts the .gitnexusignore filter file (if present in
+# .ddev/gitnexus/<mount-name>.gitnexusignore) so the indexer respects
+# the same filter the running gitnexus container would.
 # ──────────────────────────────────────────────────────────────────────────
 rebuild_mount() {
   local mount_name="$1"
   local mode="$2"
-  echo "[gitnexus-rebuild] Rebuilding /mounts/${mount_name} (workers: ${mode})..."
 
-  # Clear cached index — gitnexus entrypoint will re-index on next serve.
-  docker exec -u root "$CONTAINER" rm -rf "/mounts/${mount_name}/.gitnexus" "/mounts/${mount_name}/.git" 2>/dev/null || true
+  # Resolve host source path
+  local host_src
+  if [ "$mount_name" = "$MAIN_MOUNT" ]; then
+    host_src="$DDEV_APPROOT"
+  elif [ "$mount_name" = "$VENDOR_MOUNT" ]; then
+    host_src="$DDEV_APPROOT/vendor"
+  else
+    echo "[gitnexus-rebuild]   → unknown mount: $mount_name" >&2
+    return 1
+  fi
 
-  # Run analyze in foreground so the script can report success/failure.
+  echo "[gitnexus-rebuild] Rebuilding /mounts/${mount_name} (one-shot, workers: ${mode})..."
+  echo "                   host source: ${host_src}"
+
+  # Clear stale cache so the one-shot indexes fresh.
+  rm -rf "${host_src}/.gitnexus" "${host_src}/.git" 2>/dev/null || true
+
   local workers_flag="--workers auto"
   [ "$mode" = "sequential" ] && workers_flag="--workers 0 -v"
 
-  if docker exec --workdir "/mounts/${mount_name}" "$CONTAINER" bash -c "
-    git init -q 2>/dev/null || true
-    git add -A 2>/dev/null || true
-    git commit -q -m 'index' --allow-empty 2>/dev/null || true
-    NODE_OPTIONS='--max-old-space-size=8192' \
-      gitnexus analyze --skip-agents-md --skip-skills --index-only --worker-timeout 120 ${workers_flag} 2>&1 | tail -10
-  "; then
+  # Build docker run args. Bind-mount the filter file too if it exists at
+  # the conventional location (matches what the running container does).
+  local filter_file=".ddev/gitnexus/${mount_name}.gitnexusignore"
+  local extra_mounts=""
+  if [ -f "${DDEV_APPROOT}/${filter_file}" ]; then
+    extra_mounts="-v ${DDEV_APPROOT}/${filter_file}:/mounts/${mount_name}/.gitnexusignore"
+  fi
+
+  if docker run --rm \
+       -e INDEX_ONLY=1 \
+       -e VERBOSE="$([ "$mode" = "sequential" ] && echo 1 || echo 0)" \
+       -e NODE_OPTIONS='--max-old-space-size=8192' \
+       -e GITNEXUS_WORKER_TIMEOUT=120 \
+       -v "${host_src}:/mounts/${mount_name}" \
+       $extra_mounts \
+       "$IMAGE" \
+       serve --host 0.0.0.0 2>&1 | tail -25; then
     echo "[gitnexus-rebuild]   → ${mount_name} OK"
     NEEDS_RESTART=1
   else
@@ -159,9 +200,13 @@ fi
 
 if [ "$NEEDS_RESTART" = "1" ]; then
   echo ""
-  echo "[gitnexus-rebuild] Restarting ${CONTAINER} so serve picks up the new index..."
-  docker restart "$CONTAINER" >/dev/null
-  echo "[gitnexus-rebuild]   → restarted"
+  if docker inspect "$CONTAINER" >/dev/null 2>&1 && [ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null)" = "true" ]; then
+    echo "[gitnexus-rebuild] Restarting ${CONTAINER} so serve picks up the new index..."
+    docker restart "$CONTAINER" >/dev/null
+    echo "[gitnexus-rebuild]   → restarted"
+  else
+    echo "[gitnexus-rebuild] ${CONTAINER} not running — new index will be picked up on next ddev start."
+  fi
 fi
 
 echo ""
