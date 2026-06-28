@@ -5,3 +5,8 @@ node_modules/
 index/lbug
 index/meta*.json
 gitnexus-index-*.tar.gz
+
+# Local environment / compose overrides — user-specific paths, not shared.
+# Templates are committed as .env.example and docker-compose.override.yml.example.
+.env
+docker-compose.override.yml

@@ -231,48 +231,16 @@ If that 404s or times out, the gitnexus container isn't running or isn't reachab
 
 ## Adding your own code
 
-Mount any number of code folders at `/mounts/<name>`. Each becomes a separate index, automatically linked with the Mage-OS graph for cross-index queries. **No gitnexus needed on your host** — the container handles all indexing.
+Index your own code (custom Magento modules, vendor namespaces, full project trees) and serve it through the same MCP endpoint alongside the bundled mageos / hyva / deps indexes. Two paths:
 
-> **XML augmentation for mounts:** If a mount looks like a full Magento project (contains `vendor/composer/autoload_psr4.php` next to the mounted directory), the [XML augmenter](augmenter/README.md) runs automatically after the first-time index so the mount's `di.xml` / `events.xml` / layout / etc. become queryable as graph edges. Disable with `-e AUGMENT=0`. Cross-mount references (e.g., a plugin in your custom mount targeting a core Magento class) **cannot** be linked — both endpoints would need to live in the same lbug. For full cross-augmentation, do a unified `REBUILD=1` against your whole project instead.
+1. **Per-project DDEV service** *(recommended for DDEV users)* — one gitnexus container per project, strict isolation, pre-built indexes so `ddev start` stays fast. Installable as a DDEV add-on: `ddev add-on get /path/to/mage-os-gitnexus/ddev-addon` from your project root. See [`ddev-addon/README.md`](ddev-addon/README.md).
+2. **Standalone container with mounts** — one host-side gitnexus mounting code from any number of locations. Simpler if you're not on DDEV, or if you want all projects in one shared graph.
 
-### Examples
+**Full step-by-step guide:** [`docs/custom-indices.md`](docs/custom-indices.md). Covers both paths, `.gitnexusignore` writing, `Napi::Error` recovery, troubleshooting.
 
-**Single custom module:**
+> **XML augmentation:** if a mount looks like a full Magento project (contains `vendor/composer/autoload_psr4.php`), the [XML augmenter](augmenter/README.md) runs automatically so the mount's `di.xml` / `events.xml` / layout XML / webapi.xml become queryable as graph edges. Disable with `-e AUGMENT=0`. Cross-mount references (e.g., a plugin in your custom mount targeting a core Magento class) **cannot** be linked — both endpoints would need to live in the same lbug. For full cross-augmentation, build a unified index with `REBUILD=1`.
 
-```json
-{
-  "mcpServers": {
-    "gitnexus-mageos": {
-      "command": "docker",
-      "args": [
-        "run", "--rm", "-i",
-        "-v", "/path/to/app/code/MyVendor:/mounts/myvendor",
-        "mage-os-gitnexus:latest"
-      ]
-    }
-  }
-}
-```
-
-**Multiple mounts — custom modules + third-party packages + theme:**
-
-```json
-{
-  "mcpServers": {
-    "gitnexus-mageos": {
-      "command": "docker",
-      "args": [
-        "run", "--rm", "-i",
-        "-v", "/path/to/app/code/MyVendor:/mounts/myvendor",
-        "-v", "/path/to/vendor/paypal/module-braintree:/mounts/braintree",
-        "-v", "/path/to/vendor/stripe/module-payments:/mounts/stripe",
-        "-v", "/path/to/app/design/frontend/MyTheme:/mounts/mytheme",
-        "mage-os-gitnexus:latest"
-      ]
-    }
-  }
-}
-```
+> **Sharing-safe local config:** when cloning this repo to mount paths from your own machine, **don't edit `docker-compose.yml` directly** — those edits get tracked by git. Use the `.env` (template at `.env.example`) and `docker-compose.override.yml` (template at `docker-compose.override.yml.example`) patterns. Both files are gitignored. docker compose auto-merges `override.yml` at startup; no flag needed.
 
 ### How it works
 

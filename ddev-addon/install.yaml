@@ -1,0 +1,87 @@
+# mage-os-gitnexus DDEV add-on
+#
+# Installs a per-project gitnexus service. Each DDEV project gets its own
+# gitnexus container, indexing only that project's code (filtered by a
+# .gitnexusignore at the project root). Reachable from inside the web
+# container at http://gitnexus:4747/api/mcp via DDEV's internal docker DNS.
+#
+# Prerequisites:
+#   - mage-os-gitnexus:latest image must be built locally
+#     (from the parent repo: `docker compose build`)
+#   - A .gitnexusignore at your project root controlling what gets indexed
+#   - (recommended) Pre-build the project's index with the parent repo's
+#     scripts/build-mount.sh so `ddev restart` doesn't pay the indexing cost
+#
+# Install (local, after cloning mage-os-gitnexus):
+#   cd /path/to/your/ddev/project
+#   ddev add-on get /path/to/mage-os-gitnexus/ddev-addon
+#
+# Install (from a release tarball, when published):
+#   ddev add-on get https://github.com/<owner>/mage-os-gitnexus/releases/download/<version>/ddev-addon.tar.gz
+#
+# Uninstall:
+#   ddev add-on remove gitnexus
+name: gitnexus
+
+project_files:
+  - docker-compose.gitnexus.yaml
+  - commands/host/gitnexus-rebuild
+
+pre_install_actions:
+  - |
+    # Refuse install if the image isn't on the local docker daemon.
+    if ! docker image inspect mage-os-gitnexus:latest >/dev/null 2>&1; then
+      echo ""
+      echo "ERROR: mage-os-gitnexus:latest image not found on this docker daemon."
+      echo ""
+      echo "Build it first from the mage-os-gitnexus repo:"
+      echo "  cd /path/to/mage-os-gitnexus && docker compose build"
+      echo ""
+      exit 1
+    fi
+
+post_install_actions:
+  - |
+    cat <<'EOF'
+
+    ============================================================
+    gitnexus add-on installed.
+
+    Next steps:
+
+    1. Drop a .gitnexusignore file at the project root.
+       Starter template + pattern explanation:
+         <mage-os-gitnexus-repo>/docs/custom-indices.md
+       Reference:
+         <mage-os-gitnexus-repo>/index/.gitnexusignore.mageos
+
+    2. (Recommended) Pre-build the project's index — keeps
+       `ddev restart` fast. From the parent repo:
+         scripts/build-mount.sh $DDEV_APPROOT $DDEV_SITENAME
+
+    3. ddev restart
+
+       The gitnexus service starts, sees the cached .gitnexus/lbug,
+       skips indexing, serves immediately. From inside the web
+       container:
+         curl -sS -o /dev/null -w '%{http_code}\n' http://gitnexus:4747/
+       Expect: 200
+
+    4. Verify from the host:
+         docker exec ddev-${DDEV_SITENAME}-gitnexus gitnexus list
+       Expect 4 entries: mageos, hyva, deps, ${DDEV_SITENAME}
+
+    Customising the mount alias (optional):
+      The default mount name is ${DDEV_SITENAME}. To use a shorter
+      alias (e.g. "pps" instead of "pvcpipesupplies"), edit
+      .ddev/docker-compose.gitnexus.yaml after install.
+
+    ============================================================
+
+    EOF
+
+removal_actions:
+  - |
+    if docker ps -a --filter "name=ddev-${DDEV_SITENAME}-gitnexus" --format '{{.Names}}' | grep -q .; then
+      docker rm -f "ddev-${DDEV_SITENAME}-gitnexus" >/dev/null 2>&1 || true
+    fi

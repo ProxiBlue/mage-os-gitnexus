@@ -1,0 +1,22 @@
+# Per-project gitnexus service.
+#
+# Indexes this project's custom code (filtered by /.gitnexusignore at the
+# project root) alongside the bundled mageos / hyva / deps indexes baked
+# into the mage-os-gitnexus image. Reachable from the web container at
+# http://gitnexus:4747/api/mcp via DDEV's internal docker DNS — no host
+# port (one container per project, no host-port clash across projects).
+#
+# Mount alias: defaults to $DDEV_SITENAME. To shorten (e.g. "pps" instead
+# of "pvcpipesupplies"), edit the /mounts/${...} path below.
+services:
+  gitnexus:
+    container_name: ddev-${DDEV_SITENAME}-gitnexus
+    image: mage-os-gitnexus:latest
+    command: serve --host 0.0.0.0
+    environment:
+      PROJECT_ROOT: /var/www/html
+    volumes:
+      - "${DDEV_APPROOT}:/mounts/${DDEV_SITENAME}"
+    labels:
+      com.ddev.site-name: ${DDEV_SITENAME}
+      com.ddev.approot: ${DDEV_APPROOT}

@@ -1,0 +1,42 @@
+# docker-compose.override.yml.example
+#
+# Copy to docker-compose.override.yml (gitignored) and edit for your local
+# code paths. docker compose auto-merges override.yml at startup — no flag,
+# no Makefile wrapper needed.
+#
+# Each entry mounts a host code folder into /mounts/<name>. On first startup
+# the container indexes each mount independently (cached afterward in
+# <mount>/.gitnexus/) and links it into the mageos-project group for
+# cross-index MCP queries (find_symbol, impact, query, context).
+#
+# Two mount strategies — pick one per project:
+#
+# 1. Whole-project mount (RECOMMENDED for evaluating gitnexus value):
+#    Mount the project root and drop a .gitnexusignore in the project to
+#    whitelist what you actually want indexed (e.g. app/code/** plus your
+#    own vendor namespaces). The XML augmenter auto-activates because the
+#    mount contains vendor/composer/autoload_psr4.php — di.xml, events.xml,
+#    layout XML, webapi.xml become first-class graph edges. In-project
+#    cross-references (custom-module → custom-vendor-module) resolve.
+#
+# 2. Per-folder mounts:
+#    Mount individual subdirs. Simpler but cross-references between mount
+#    boundaries do NOT resolve (gitnexus README "Adding your own code"
+#    section is explicit on this).
+#
+# Note: cross-mount references into the separate bundled mageos / hyva /
+# deps indexes never resolve regardless of strategy. Workaround would be a
+# full REBUILD=1 against the unified project (~13h on a fresh machine).
+#
+# Remember to also add `.gitnexus/` to your project's own .gitignore if you
+# don't want the lbug cache files committed.
+
+services:
+  gitnexus-ui:
+    volumes:
+      # Strategy 1 — whole project, filtered by .gitnexusignore inside it
+      - /home/yourusername/path/to/some-mageos-project:/mounts/some-project
+
+      # Strategy 2 — per-folder mounts (accept cross-ref limits)
+      # - /home/yourusername/path/to/project/app/code:/mounts/proj-appcode
+      # - /home/yourusername/path/to/project/vendor/yournamespace:/mounts/proj-ns

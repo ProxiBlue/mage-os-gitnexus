@@ -177,10 +177,20 @@ if [ -d "$MOUNTS_DIR" ]; then
     [ -d "$MOUNT_PATH" ] || continue
 
     MOUNT_NAME=$(basename "$MOUNT_PATH")
-    INDEX_NAME="custom-${MOUNT_NAME}"
+    # gitnexus `index` auto-assigns the registry alias from the basename of
+    # the path (`/mounts/pps` → `pps`). Match that here so the `group add`
+    # below references an alias that actually exists.
+    INDEX_NAME="${MOUNT_NAME}"
 
     echo "[mage-os-gitnexus] Found mount: $MOUNT_NAME"
     HAS_MOUNTS=true
+
+    # Allow git to operate on host-owned directories (UID mismatch).
+    # Strip trailing slash — MOUNT_PATH comes from /mounts/*/ glob which
+    # preserves it, but git's safe.directory matcher rejects the slashed form.
+    # MUST run regardless of indexing-vs-reusing — the register step below
+    # also calls git, and without this it reports "not a git repository".
+    git config --global --add safe.directory "${MOUNT_PATH%/}"
 
     # Check for existing index
     if [ -f "${MOUNT_PATH}.gitnexus/lbug" ]; then
@@ -189,18 +199,41 @@ if [ -d "$MOUNTS_DIR" ]; then
       echo "  Indexing ${MOUNT_NAME}..."
       cd "$MOUNT_PATH"
 
-      # Allow git to operate on host-owned directories (UID mismatch)
-      git config --global --add safe.directory "$MOUNT_PATH"
-
-      # Create a minimal git repo if needed (gitnexus requires one)
+      # Create a minimal git repo if needed (gitnexus requires one).
+      # If the mount is read-only (e.g. vendor mounted :ro to protect from
+      # accidental writes), git init will fail. Detect that and skip — the
+      # `--allow-non-git` flag passed to `gitnexus index` below covers the
+      # non-git case, but the analyze step also needs to write .gitnexus/
+      # cache. If the mount is read-only we cannot index it in-place at all
+      # and we surface a clear error so the operator switches to a writable
+      # mount (drop the :ro in docker-compose) — vendor dirs are typically
+      # gitignored so the .git/.gitnexus artifacts are throwaway.
       if [ ! -d ".git" ]; then
-        git init -q
+        if ! git init -q 2>/dev/null; then
+          echo "  ERROR: mount ${MOUNT_NAME} is read-only — cannot init git scratchspace."
+          echo "  Fix: drop ':ro' from the volume in docker-compose.gitnexus.yaml so gitnexus"
+          echo "       can write .git/ and .gitnexus/ inside the mount. Vendor dirs are"
+          echo "       typically gitignored so these artifacts are harmless."
+          echo "  Skipping ${MOUNT_NAME}."
+          cd /workspace
+          continue
+        fi
         git add -A 2>/dev/null || true
         git commit -q -m "index" --allow-empty 2>/dev/null || true
       fi
 
-      NODE_OPTIONS='--max-old-space-size=4096' gitnexus analyze \
-        --skip-agents-md --skip-skills --index-only 2>&1 | tail -3
+      # VERBOSE=1 enables per-file logging (`-v`) and removes the output
+      # truncation. Use when diagnosing tree-sitter / parser crashes — the
+      # last logged filename before a Napi::Error is your culprit.
+      # Also force sequential parsing (workers=0) so log ordering matches
+      # file processing order; interleaved parallel logs are hard to read.
+      if [ "${VERBOSE:-0}" = "1" ]; then
+        NODE_OPTIONS='--max-old-space-size=4096' gitnexus analyze \
+          --skip-agents-md --skip-skills --index-only -v --workers 0 2>&1
+      else
+        NODE_OPTIONS='--max-old-space-size=4096' gitnexus analyze \
+          --skip-agents-md --skip-skills --index-only 2>&1 | tail -3
+      fi
 
       # XML augmentation for mounts that look like a full Magento project
       # (have their own vendor/composer/autoload_psr4.php). Scoped to this
@@ -217,14 +250,53 @@ if [ -d "$MOUNTS_DIR" ]; then
       cd /workspace
     fi
 
-    # Register in gitnexus
-    gitnexus index "$MOUNT_PATH" --name "$INDEX_NAME" 2>/dev/null || true
+    # Register in gitnexus's global registry — IDEMPOTENTLY. Every container
+    # start re-runs this loop; `gitnexus index` is NOT idempotent — it appends
+    # a new registry entry on each call rather than updating in-place. Without
+    # the existence check below, the registry grows duplicates across restarts
+    # (multiple entries with the same name but different `path` fields, all
+    # pointing at the same storage path), which breaks group resolution.
+    #
+    # --allow-non-git covers host-bind-mount edge cases where `.git` exists
+    # but git fails to detect the repo before safe.directory takes effect.
+    # `--name` was removed from `gitnexus index` in current versions, so
+    # gitnexus auto-assigns the alias:
+    #   - for git repos: the git remote name (e.g. "m2_pvcpipesupplies")
+    #   - for non-git folders: the path basename (e.g. "pps")
+    REGISTRY_FILE=/root/.gitnexus/registry.json
+    if [ -f "$REGISTRY_FILE" ] && grep -qF "\"path\": \"${MOUNT_PATH%/}\"" "$REGISTRY_FILE"; then
+      echo "  Already registered (skipping re-register to keep registry clean)."
+    else
+      if ! gitnexus index "$MOUNT_PATH" --allow-non-git 2>&1; then
+        echo "  WARNING: gitnexus index failed for ${MOUNT_NAME} — see error above"
+      fi
+    fi
 
-    # Add to group
-    gitnexus group add "$GROUP_NAME" "custom/${MOUNT_NAME}" "$INDEX_NAME" 2>/dev/null || true
+    # Look up the actual registered alias via `gitnexus list` — the only
+    # reliable source. The "Repository registered: NAME" line in `gitnexus
+    # index` output LIES on re-registration (reports the basename even
+    # when the registry has it under a different name). We need the real
+    # alias to pass to `gitnexus group add`, or the group entry references
+    # a non-existent repo and queries silently miss it.
+    ACTUAL_NAME=$(gitnexus list 2>/dev/null | \
+      awk -v p="${MOUNT_PATH%/}" '/^  [^ ]/ {n=$1} $1=="Path:" && $2==p {print n; exit}')
+    if [ -z "$ACTUAL_NAME" ]; then
+      echo "  WARNING: could not determine registered alias for ${MOUNT_PATH%/} — falling back to ${MOUNT_NAME}"
+      ACTUAL_NAME="${MOUNT_NAME}"
+    fi
+
+    # Add to group with the ACTUAL registered alias (not the mount basename)
+    gitnexus group add "$GROUP_NAME" "custom/${MOUNT_NAME}" "$ACTUAL_NAME" 2>&1 || \
+      echo "  WARNING: gitnexus group add failed for custom/${MOUNT_NAME} -> ${ACTUAL_NAME}"
     MEMBER_COUNT=$((MEMBER_COUNT + 1))
 
-    echo "  Registered as: custom/${MOUNT_NAME}"
+    if [ "$ACTUAL_NAME" = "$MOUNT_NAME" ]; then
+      echo "  Registered as: custom/${MOUNT_NAME} (alias: ${ACTUAL_NAME})"
+    else
+      # Surfaces the case where the git remote name differs from the mount
+      # basename — users querying with `repo:` need the actual alias.
+      echo "  Registered as: custom/${MOUNT_NAME} (alias: ${ACTUAL_NAME} — derived from git remote, not mount basename)"
+    fi
   done
 fi
 
@@ -245,6 +317,15 @@ else
 fi
 
 echo ""
+
+# Pre-build / one-shot mode. Used by scripts/build-mount.sh to produce the
+# per-mount .gitnexus/lbug on the host without starting a long-running MCP
+# server. Once the lbug exists in the mount, subsequent containers (e.g.
+# per-project DDEV gitnexus services) see it on startup and skip indexing.
+if [ "${INDEX_ONLY:-0}" = "1" ]; then
+  echo "[mage-os-gitnexus] INDEX_ONLY=1 — exiting after build (skipping serve)."
+  exit 0
+fi
 
 # Restore stdout (fd 3 holds the original) so gitnexus mcp can speak
 # JSON-RPC cleanly without our setup chatter polluting the protocol.

@@ -1,0 +1,168 @@
+#!/bin/bash
+## Description: Rebuild gitnexus index(es) for this project if source changed.
+## Usage: ddev gitnexus-rebuild [--main-only|--vendor-only|--force]
+## Example: ddev gitnexus-rebuild --vendor-only
+## ExecRaw: true
+## HostBinaryExists: docker
+##
+## Default: smart mode — only rebuild a mount if its source has changed
+## since the last index (git HEAD diff for main code, composer.lock mtime
+## for vendor). Safe to run nightly via host cron — most nights it's a
+## fast no-op.
+##
+## Flags:
+##   --force         Skip change detection; rebuild everything.
+##   --main-only     Only consider the main code mount (/mounts/<short-name>).
+##   --vendor-only   Only consider the vendor mount (/mounts/<short-name>-vendor),
+##                   if one is configured. Skipped silently if not configured.
+##   --parallel      (default) Use parallel workers — fast, ~30-60 min for
+##                   a full Magento vendor.
+##   --sequential    Sequential workers — slow but pinpoints any crashing
+##                   file. Use only when debugging.
+##
+## Cron pattern — recommended host crontab line, runs at 02:00 daily, logs
+## per-project so failures are visible:
+##   0 2 * * * cd /path/to/project && ddev gitnexus-rebuild >> /tmp/gitnexus-rebuild.log 2>&1
+##
+## Fleet pattern — loop over all DDEV projects with gitnexus installed:
+##   0 2 * * * for d in $(ddev list --json-output | jq -r '.raw[] | select(.gitnexus_status_text=="" or true) | .approot'); do (cd "$d" && [ -f .ddev/docker-compose.gitnexus.yaml ] && ddev gitnexus-rebuild); done >> /tmp/gitnexus-rebuild.log 2>&1
+
+set -e
+
+FORCE=0
+MAIN_ONLY=0
+VENDOR_ONLY=0
+WORKERS_MODE="parallel"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --force) FORCE=1 ;;
+    --main-only) MAIN_ONLY=1 ;;
+    --vendor-only) VENDOR_ONLY=1 ;;
+    --parallel) WORKERS_MODE="parallel" ;;
+    --sequential) WORKERS_MODE="sequential" ;;
+    *) echo "unknown arg: $1" >&2; exit 1 ;;
+  esac
+  shift
+done
+
+CONTAINER="ddev-${DDEV_SITENAME}-gitnexus"
+NEEDS_RESTART=0
+
+if ! docker inspect "$CONTAINER" >/dev/null 2>&1; then
+  echo "[gitnexus-rebuild] Container $CONTAINER not running. Start with: ddev start"
+  exit 1
+fi
+
+# Discover the mount short-name from the docker-compose config. The convention
+# is /mounts/<short-name> for main code; some projects add /mounts/<short-name>-vendor.
+MAIN_MOUNT=$(docker exec "$CONTAINER" ls /mounts/ 2>/dev/null | grep -v -- '-vendor$' | head -1)
+VENDOR_MOUNT=$(docker exec "$CONTAINER" ls /mounts/ 2>/dev/null | grep -- '-vendor$' | head -1)
+
+if [ -z "$MAIN_MOUNT" ]; then
+  echo "[gitnexus-rebuild] No mount found under /mounts/ — is the addon installed correctly?"
+  exit 1
+fi
+
+echo "[gitnexus-rebuild] Project: ${DDEV_SITENAME}"
+echo "[gitnexus-rebuild] Container: ${CONTAINER}"
+echo "[gitnexus-rebuild] Mounts detected — main: ${MAIN_MOUNT}, vendor: ${VENDOR_MOUNT:-<none>}"
+echo ""
+
+# ──────────────────────────────────────────────────────────────────────────
+# Helper: extract current indexed commit for a given mount alias.
+# Reads `gitnexus list` and parses the "Commit:" field for the row whose
+# Path: matches the mount path. Returns empty string if not found.
+# ──────────────────────────────────────────────────────────────────────────
+indexed_commit_for() {
+  local mount_path="$1"
+  docker exec "$CONTAINER" gitnexus list 2>/dev/null | \
+    awk -v p="$mount_path" '
+      /^  [^ ]/ {name=$1}
+      $1 == "Path:" && $2 == p {path_match=1}
+      path_match && $1 == "Commit:" {print $2; exit}
+    '
+}
+
+# ──────────────────────────────────────────────────────────────────────────
+# Helper: trigger the per-mount rebuild inside the container. Drops the
+# cached .gitnexus/lbug and the .git scratchspace so gitnexus re-creates
+# them from scratch on next start. Then reloads the gitnexus serve process
+# by restarting the container.
+# ──────────────────────────────────────────────────────────────────────────
+rebuild_mount() {
+  local mount_name="$1"
+  local mode="$2"
+  echo "[gitnexus-rebuild] Rebuilding /mounts/${mount_name} (workers: ${mode})..."
+
+  # Clear cached index — gitnexus entrypoint will re-index on next serve.
+  docker exec -u root "$CONTAINER" rm -rf "/mounts/${mount_name}/.gitnexus" "/mounts/${mount_name}/.git" 2>/dev/null || true
+
+  # Run analyze in foreground so the script can report success/failure.
+  local workers_flag="--workers auto"
+  [ "$mode" = "sequential" ] && workers_flag="--workers 0 -v"
+
+  if docker exec --workdir "/mounts/${mount_name}" "$CONTAINER" bash -c "
+    git init -q 2>/dev/null || true
+    git add -A 2>/dev/null || true
+    git commit -q -m 'index' --allow-empty 2>/dev/null || true
+    NODE_OPTIONS='--max-old-space-size=8192' \
+      gitnexus analyze --skip-agents-md --skip-skills --index-only --worker-timeout 120 ${workers_flag} 2>&1 | tail -10
+  "; then
+    echo "[gitnexus-rebuild]   → ${mount_name} OK"
+    NEEDS_RESTART=1
+  else
+    echo "[gitnexus-rebuild]   → ${mount_name} FAILED" >&2
+    return 1
+  fi
+}
+
+# ──────────────────────────────────────────────────────────────────────────
+# Main mount — re-index when git HEAD has moved since last index.
+# ──────────────────────────────────────────────────────────────────────────
+if [ "$VENDOR_ONLY" = "0" ]; then
+  CURRENT_HEAD=$(cd "$DDEV_APPROOT" && git rev-parse --short HEAD 2>/dev/null || echo "")
+  INDEXED_HEAD=$(indexed_commit_for "/mounts/${MAIN_MOUNT}")
+
+  if [ "$FORCE" = "1" ] || [ -z "$INDEXED_HEAD" ] || [ "$CURRENT_HEAD" != "$INDEXED_HEAD" ]; then
+    echo "[gitnexus-rebuild] Main mount needs rebuild (indexed=${INDEXED_HEAD:-none}, current=${CURRENT_HEAD})"
+    rebuild_mount "$MAIN_MOUNT" "$WORKERS_MODE"
+  else
+    echo "[gitnexus-rebuild] Main mount up-to-date at commit ${CURRENT_HEAD} — skipping"
+  fi
+fi
+
+# ──────────────────────────────────────────────────────────────────────────
+# Vendor mount — re-index when composer.lock has been modified since the
+# last index file was written (proxy for "vendor changed").
+# ──────────────────────────────────────────────────────────────────────────
+if [ "$MAIN_ONLY" = "0" ] && [ -n "$VENDOR_MOUNT" ]; then
+  COMPOSER_LOCK="${DDEV_APPROOT}/composer.lock"
+  if [ ! -f "$COMPOSER_LOCK" ]; then
+    echo "[gitnexus-rebuild] composer.lock not found at ${COMPOSER_LOCK} — skipping vendor rebuild"
+  else
+    LOCK_MTIME=$(stat -c %Y "$COMPOSER_LOCK" 2>/dev/null || echo 0)
+    # Indexed-at as epoch — gitnexus list prints a human-readable date that's
+    # awkward to parse, so we read the index file's own mtime instead.
+    INDEX_MTIME=$(docker exec "$CONTAINER" stat -c %Y "/mounts/${VENDOR_MOUNT}/.gitnexus/lbug" 2>/dev/null || echo 0)
+
+    if [ "$FORCE" = "1" ] || [ "$INDEX_MTIME" = "0" ] || [ "$LOCK_MTIME" -gt "$INDEX_MTIME" ]; then
+      echo "[gitnexus-rebuild] Vendor mount needs rebuild (composer.lock mtime=${LOCK_MTIME}, index mtime=${INDEX_MTIME})"
+      rebuild_mount "$VENDOR_MOUNT" "$WORKERS_MODE"
+    else
+      echo "[gitnexus-rebuild] Vendor mount up-to-date (composer.lock not modified since last index) — skipping"
+    fi
+  fi
+elif [ "$MAIN_ONLY" = "0" ]; then
+  echo "[gitnexus-rebuild] No vendor mount configured — skipping vendor rebuild"
+fi
+
+if [ "$NEEDS_RESTART" = "1" ]; then
+  echo ""
+  echo "[gitnexus-rebuild] Restarting ${CONTAINER} so serve picks up the new index..."
+  docker restart "$CONTAINER" >/dev/null
+  echo "[gitnexus-rebuild]   → restarted"
+fi
+
+echo ""
+echo "[gitnexus-rebuild] Done."
