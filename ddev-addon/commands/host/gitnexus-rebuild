@@ -1,7 +1,7 @@
 #!/bin/bash
 ## Description: Rebuild gitnexus index(es) for this project if source changed.
-## Usage: ddev gitnexus-rebuild [--main-only|--vendor-only|--force]
-## Example: ddev gitnexus-rebuild --vendor-only
+## Usage: gitnexus-rebuild [--main-only|--vendor-only|--force]
+## Example: gitnexus-rebuild --vendor-only
 ##
 ## Default: smart mode — only rebuild a mount if its source has changed
 ## since the last index (git HEAD diff for main code, composer.lock mtime
